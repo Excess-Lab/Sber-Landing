@@ -1,0 +1,52 @@
+{
+  "kind": "collectionType",
+  "collectionName": "challenges",
+  "info": {
+    "singularName": "challenge",
+    "pluralName": "challenges",
+    "displayName": "Challenge",
+    "description": "Tasks that users can complete for XP"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "type": {
+      "type": "string"
+    },
+    "difficulty": {
+      "type": "string"
+    },
+    "xpReward": {
+      "type": "integer",
+      "default": 0,
+      "min": 0
+    },
+    "createdByUser": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "mentionedUsers": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "plugin::users-permissions.user"
+    },
+    "deadline": {
+      "type": "datetime"
+    },
+    "visibility": {
+      "type": "enumeration",
+      "enum": ["private", "public"],
+      "default": "private",
+      "required": true
+    }
+  }
+}

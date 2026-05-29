@@ -1,0 +1,24 @@
+{
+  "kind": "collectionType",
+  "collectionName": "team_roles",
+  "info": {
+    "singularName": "team-role",
+    "pluralName": "team-roles",
+    "displayName": "Team Role"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team",
+      "required": true
+    },
+    "name": {
+      "type": "string",
+      "required": true
+    }
+  }
+}

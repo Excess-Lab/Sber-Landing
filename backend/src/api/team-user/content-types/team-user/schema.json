@@ -1,0 +1,32 @@
+{
+  "kind": "collectionType",
+  "collectionName": "team_users",
+  "info": {
+    "singularName": "team-user",
+    "pluralName": "team-users",
+    "displayName": "Team User"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team",
+      "required": true
+    },
+    "teamRole": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team-role.team-role",
+      "required": true
+    }
+  }
+}
