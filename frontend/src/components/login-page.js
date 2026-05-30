@@ -6,6 +6,7 @@ class LoginPage extends LitElement {
     loading: { state: true },
     errorMessage: { state: true },
     successMessage: { state: true },
+    passwordVisible: { state: true },
   };
 
   constructor() {
@@ -14,6 +15,7 @@ class LoginPage extends LitElement {
     this.loading = false;
     this.errorMessage = '';
     this.successMessage = '';
+    this.passwordVisible = false;
     this.accessEmail = 'kabanov.makap@yandex.ru';
   }
 
@@ -119,6 +121,10 @@ class LoginPage extends LitElement {
         composed: true,
       }),
     );
+
+    if (!isAdmin) {
+      window.location.assign('/employee');
+    }
   }
 
   openAccessRequestEmail() {
@@ -225,16 +231,41 @@ class LoginPage extends LitElement {
         />
       </label>
 
-      <label class="block" style="margin-top: calc(10px * var(--frame-scale));">
+      <label class="password-field">
         <span class="sr-only">Пароль</span>
         <input
-          class="field-control"
+          class="field-control password-control"
           name="password"
-          type="password"
+          type=${this.passwordVisible ? 'text' : 'password'}
           autocomplete="current-password"
           placeholder="Пароль"
           required
         />
+        <button
+          class="password-toggle"
+          type="button"
+          aria-label=${this.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+          aria-pressed=${this.passwordVisible}
+          @click=${() => {
+            this.passwordVisible = !this.passwordVisible;
+          }}
+        >
+          ${this.passwordVisible
+            ? html`
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 3l18 18" />
+                  <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                  <path d="M9.4 5.2A9.8 9.8 0 0 1 12 4.9c5.2 0 8.7 4.5 9.5 6.2a2 2 0 0 1 0 1.8 11.7 11.7 0 0 1-2.2 2.8" />
+                  <path d="M6.6 6.6A12.4 12.4 0 0 0 2.5 11a2 2 0 0 0 0 1.8C3.3 14.6 6.8 19.1 12 19.1a10 10 0 0 0 4.5-1.1" />
+                </svg>
+              `
+            : html`
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M2.5 11.1a2 2 0 0 0 0 1.8c.8 1.7 4.3 6.2 9.5 6.2s8.7-4.5 9.5-6.2a2 2 0 0 0 0-1.8C20.7 9.4 17.2 4.9 12 4.9s-8.7 4.5-9.5 6.2Z" />
+                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                </svg>
+              `}
+        </button>
       </label>
 
       ${isAdmin

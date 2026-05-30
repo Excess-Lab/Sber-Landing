@@ -1,2 +1,2 @@
 import './styles/tailwind.css';
-import './components/login-page.js';
+import './components/app-root.js';
