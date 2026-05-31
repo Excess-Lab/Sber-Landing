@@ -14,6 +14,18 @@ export default (plugin: any) => {
     allowedTypes: ['images'],
   };
 
+  userAttributes.statusEmoji = {
+    type: 'string',
+    default: '😁',
+    maxLength: 12,
+  };
+
+  userAttributes.statusText = {
+    type: 'string',
+    default: 'Кайфую',
+    maxLength: 48,
+  };
+
   userAttributes.xp = {
     type: 'integer',
     default: 0,

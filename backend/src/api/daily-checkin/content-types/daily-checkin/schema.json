@@ -1,11 +1,11 @@
 {
   "kind": "collectionType",
-  "collectionName": "user_challenges",
+  "collectionName": "daily_checkins",
   "info": {
-    "singularName": "user-challenge",
-    "pluralName": "user-challenges",
-    "displayName": "User Challenge",
-    "description": "User submissions and approval status for challenges"
+    "singularName": "daily-checkin",
+    "pluralName": "daily-checkins",
+    "displayName": "Daily Checkin",
+    "description": "Daily participation check-ins with approval"
   },
   "options": {
     "draftAndPublish": false
@@ -17,11 +17,14 @@
       "target": "plugin::users-permissions.user",
       "required": true
     },
-    "challenge": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::challenge.challenge",
+    "day": {
+      "type": "date",
       "required": true
+    },
+    "dayKey": {
+      "type": "string",
+      "required": true,
+      "unique": true
     },
     "status": {
       "type": "enumeration",
@@ -29,24 +32,21 @@
       "default": "pending",
       "required": true
     },
+    "points": {
+      "type": "integer",
+      "default": 10,
+      "min": 0,
+      "required": true
+    },
     "approvedBy": {
       "type": "relation",
       "relation": "manyToOne",
       "target": "plugin::users-permissions.user"
     },
-    "submittedAt": {
+    "approvedAt": {
       "type": "datetime"
     },
-    "submissionText": {
-      "type": "text"
-    },
-    "submissionLinks": {
-      "type": "text"
-    },
-    "completedAt": {
-      "type": "datetime"
-    },
-    "xpApplied": {
+    "pointsApplied": {
       "type": "boolean",
       "default": false,
       "required": true

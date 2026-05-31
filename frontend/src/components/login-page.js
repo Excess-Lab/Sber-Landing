@@ -122,9 +122,7 @@ class LoginPage extends LitElement {
       }),
     );
 
-    if (!isAdmin) {
-      window.location.assign('/employee');
-    }
+    window.location.assign(isAdmin ? '/admin' : '/employee');
   }
 
   openAccessRequestEmail() {
@@ -139,6 +137,20 @@ class LoginPage extends LitElement {
     ].join('\n');
 
     const params = new URLSearchParams({ subject, body });
+    window.location.href = `mailto:${this.accessEmail}?${params.toString()}`;
+  }
+
+  openPasswordRecoveryEmail() {
+    const subject = 'Восстановление пароля в Фабрике решений';
+    const body = [
+      'Здравствуйте!',
+      '',
+      'Прошу помочь с восстановлением пароля.',
+      '',
+      `Email для входа: ${this.querySelector('input[name=\"email\"]')?.value || ''}`,
+    ].join('\n');
+    const params = new URLSearchParams({ subject, body });
+
     window.location.href = `mailto:${this.accessEmail}?${params.toString()}`;
   }
 
@@ -277,7 +289,13 @@ class LoginPage extends LitElement {
                 <span>Запомнить тебя?</span>
               </label>
 
-              <a class="transition hover:text-black/55" href="/forgot-password">Забыл пароль</a>
+              <button
+                class="forgot-password-btn transition hover:text-black/55"
+                type="button"
+                @click=${() => this.openPasswordRecoveryEmail()}
+              >
+                Забыл пароль
+              </button>
             </div>
           `}
 

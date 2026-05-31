@@ -1,0 +1,41 @@
+{
+  "kind": "collectionType",
+  "collectionName": "user_achievements",
+  "info": {
+    "singularName": "user-achievement",
+    "pluralName": "user-achievements",
+    "displayName": "User Achievement",
+    "description": "Unlocked achievements per user"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "achievement": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::achievement.achievement",
+      "required": true
+    },
+    "periodKey": {
+      "type": "string",
+      "required": true
+    },
+    "earnedAt": {
+      "type": "datetime",
+      "required": true
+    },
+    "uniqueKey": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    }
+  }
+}
+

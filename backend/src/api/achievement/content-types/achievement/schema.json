@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "achievements",
+  "info": {
+    "singularName": "achievement",
+    "pluralName": "achievements",
+    "displayName": "Achievement",
+    "description": "Achievement definitions and unlock rules"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "code": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "icon": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "scope": {
+      "type": "enumeration",
+      "enum": ["monthly", "lifetime"],
+      "default": "monthly",
+      "required": true
+    },
+    "rule": {
+      "type": "json"
+    },
+    "sort": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}
+

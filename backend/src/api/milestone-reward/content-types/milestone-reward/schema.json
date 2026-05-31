@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "milestone_rewards",
+  "info": {
+    "singularName": "milestone-reward",
+    "pluralName": "milestone-rewards",
+    "displayName": "Milestone Reward",
+    "description": "Rewards unlocked by completing difficulties"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "code": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "image": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "requiredDifficulties": {
+      "type": "json"
+    },
+    "scope": {
+      "type": "enumeration",
+      "enum": ["monthly", "lifetime"],
+      "default": "monthly",
+      "required": true
+    },
+    "sort": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}
+

@@ -477,6 +477,45 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiAchievementAchievement extends Struct.CollectionTypeSchema {
+  collectionName: 'achievements';
+  info: {
+    description: 'Achievement definitions and unlock rules';
+    displayName: 'Achievement';
+    pluralName: 'achievements';
+    singularName: 'achievement';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    code: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    icon: Schema.Attribute.Media<'images'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::achievement.achievement'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    rule: Schema.Attribute.JSON;
+    scope: Schema.Attribute.Enumeration<['monthly', 'lifetime']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'monthly'>;
+    sort: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    title: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiChallengeChallenge extends Struct.CollectionTypeSchema {
   collectionName: 'challenges';
   info: {
@@ -529,6 +568,104 @@ export interface ApiChallengeChallenge extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiDailyCheckinDailyCheckin
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'daily_checkins';
+  info: {
+    description: 'Daily participation check-ins with approval';
+    displayName: 'Daily Checkin';
+    pluralName: 'daily-checkins';
+    singularName: 'daily-checkin';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    approvedAt: Schema.Attribute.DateTime;
+    approvedBy: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    day: Schema.Attribute.Date & Schema.Attribute.Required;
+    dayKey: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::daily-checkin.daily-checkin'
+    > &
+      Schema.Attribute.Private;
+    points: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<10>;
+    pointsApplied: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<false>;
+    publishedAt: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<['pending', 'approved', 'rejected']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pending'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    > &
+      Schema.Attribute.Required;
+  };
+}
+
+export interface ApiMilestoneRewardMilestoneReward
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'milestone_rewards';
+  info: {
+    description: 'Rewards unlocked by completing difficulties';
+    displayName: 'Milestone Reward';
+    pluralName: 'milestone-rewards';
+    singularName: 'milestone-reward';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    code: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    image: Schema.Attribute.Media<'images'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::milestone-reward.milestone-reward'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    requiredDifficulties: Schema.Attribute.JSON;
+    scope: Schema.Attribute.Enumeration<['monthly', 'lifetime']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'monthly'>;
+    sort: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    title: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiShopCardShopCard extends Struct.CollectionTypeSchema {
   collectionName: 'shop_cards';
   info: {
@@ -544,6 +681,7 @@ export interface ApiShopCardShopCard extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.Text;
+    gallery: Schema.Attribute.JSON;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -561,6 +699,7 @@ export interface ApiShopCardShopCard extends Struct.CollectionTypeSchema {
         number
       >;
     publishedAt: Schema.Attribute.DateTime;
+    splineUrl: Schema.Attribute.String;
     status: Schema.Attribute.Enumeration<['available', 'not_available']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'available'>;
@@ -666,6 +805,50 @@ export interface ApiTeamTeam extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiUserAchievementUserAchievement
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'user_achievements';
+  info: {
+    description: 'Unlocked achievements per user';
+    displayName: 'User Achievement';
+    pluralName: 'user-achievements';
+    singularName: 'user-achievement';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    achievement: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::achievement.achievement'
+    > &
+      Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    earnedAt: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::user-achievement.user-achievement'
+    > &
+      Schema.Attribute.Private;
+    periodKey: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    uniqueKey: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    > &
+      Schema.Attribute.Required;
+  };
+}
+
 export interface ApiUserChallengeUserChallenge
   extends Struct.CollectionTypeSchema {
   collectionName: 'user_challenges';
@@ -702,6 +885,8 @@ export interface ApiUserChallengeUserChallenge
     status: Schema.Attribute.Enumeration<['pending', 'approved', 'rejected']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'pending'>;
+    submissionLinks: Schema.Attribute.Text;
+    submissionText: Schema.Attribute.Text;
     submittedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -711,6 +896,9 @@ export interface ApiUserChallengeUserChallenge
       'plugin::users-permissions.user'
     > &
       Schema.Attribute.Required;
+    xpApplied: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<false>;
   };
 }
 
@@ -1216,6 +1404,16 @@ export interface PluginUsersPermissionsUser
       'manyToOne',
       'plugin::users-permissions.role'
     >;
+    statusEmoji: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 12;
+      }> &
+      Schema.Attribute.DefaultTo<'\uD83D\uDE01'>;
+    statusText: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 48;
+      }> &
+      Schema.Attribute.DefaultTo<'\u041A\u0430\u0439\u0444\u0443\u044E'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1248,11 +1446,15 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::achievement.achievement': ApiAchievementAchievement;
       'api::challenge.challenge': ApiChallengeChallenge;
+      'api::daily-checkin.daily-checkin': ApiDailyCheckinDailyCheckin;
+      'api::milestone-reward.milestone-reward': ApiMilestoneRewardMilestoneReward;
       'api::shop-card.shop-card': ApiShopCardShopCard;
       'api::team-role.team-role': ApiTeamRoleTeamRole;
       'api::team-user.team-user': ApiTeamUserTeamUser;
       'api::team.team': ApiTeamTeam;
+      'api::user-achievement.user-achievement': ApiUserAchievementUserAchievement;
       'api::user-challenge.user-challenge': ApiUserChallengeUserChallenge;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
