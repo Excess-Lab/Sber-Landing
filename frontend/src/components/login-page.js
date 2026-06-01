@@ -105,18 +105,41 @@ class LoginPage extends LitElement {
       throw new Error('Нет доступа к админ-входу');
     }
 
+    let authUser = data.user || {};
+
+    try {
+      const profileResponse = await fetch(`${this.apiUrl}/api/profile/me`, {
+        headers: {
+          Authorization: `Bearer ${data.jwt}`,
+        },
+      });
+      const profileData = await profileResponse.json().catch(() => ({}));
+
+      if (profileResponse.ok && profileData.user) {
+        authUser = {
+          ...authUser,
+          ...profileData.user,
+        };
+      }
+    } catch {
+      authUser = data.user || {};
+    }
+
     const storage = remember ? window.localStorage : window.sessionStorage;
     const otherStorage = remember ? window.sessionStorage : window.localStorage;
 
     storage.setItem('auth.jwt', data.jwt);
-    storage.setItem('auth.user', JSON.stringify(data.user));
+    storage.setItem('auth.user', JSON.stringify(authUser));
     otherStorage.removeItem('auth.jwt');
     otherStorage.removeItem('auth.user');
 
     this.successMessage = 'Вход выполнен';
     this.dispatchEvent(
       new CustomEvent('login-success', {
-        detail: data,
+        detail: {
+          ...data,
+          user: authUser,
+        },
         bubbles: true,
         composed: true,
       }),

@@ -148,6 +148,10 @@ class EmployeePage extends LitElement {
     dailyCheckinSaving: { state: true },
     dailyCheckinError: { state: true },
     dailyCheckinSuccess: { state: true },
+    reviewQueue: { state: true },
+    reviewSaving: { state: true },
+    reviewError: { state: true },
+    reviewSuccess: { state: true },
   };
 
   constructor() {
@@ -173,6 +177,7 @@ class EmployeePage extends LitElement {
       dailies: false,
       achievements: false,
       teams: false,
+      review: false,
       shop: false,
       faq: false,
     };
@@ -224,6 +229,10 @@ class EmployeePage extends LitElement {
     this.dailyCheckinSaving = false;
     this.dailyCheckinError = '';
     this.dailyCheckinSuccess = '';
+    this.reviewQueue = [];
+    this.reviewSaving = false;
+    this.reviewError = '';
+    this.reviewSuccess = '';
     this.footerDrag = null;
     this.avatarDrag = null;
     this.avatarNaturalWidth = 0;
@@ -589,6 +598,9 @@ class EmployeePage extends LitElement {
         ? data.milestoneRewards
         : this.milestoneRewards;
       this.syncStoredUser(nextUser);
+      if (this.isProjectManager()) {
+        this.fetchReviewQueue();
+      }
     } catch (error) {
       console.error(error);
       this.fetchShopCards();
@@ -762,6 +774,25 @@ class EmployeePage extends LitElement {
     return 'Сотрудник';
   }
 
+  isProjectManager() {
+    const user = this.user || this.readStoredUser();
+    const role = String(user?.globalRole || '').toLowerCase();
+
+    return role === 'project_manager';
+  }
+
+  getNavItems() {
+    if (!this.isProjectManager()) {
+      return navItems;
+    }
+
+    return [
+      ...navItems.slice(0, 4),
+      { label: 'Проверка', hash: '#review' },
+      ...navItems.slice(4),
+    ];
+  }
+
   getDisplayTeams() {
     return this.teams
       .map((item, index) => ({
@@ -856,7 +887,8 @@ class EmployeePage extends LitElement {
       deadline: challenge.deadline || '',
       visibility: challenge.visibility || 'private',
       status: entry?.status || '',
-      userChallengeId: entry?.challenge ? entry.id : entry?.userChallengeId || entry?.id,
+      challengeId: challenge.id || entry?.challengeId || entry?.id,
+      userChallengeId: entry?.challenge ? entry.id : entry?.userChallengeId || '',
       submittedAt: entry?.submittedAt || '',
       submissionText: entry?.submissionText || '',
       submissionLinks: entry?.submissionLinks || '',
@@ -989,7 +1021,7 @@ class EmployeePage extends LitElement {
       return;
     }
 
-    const sections = navItems
+    const sections = this.getNavItems()
       .map((item) => ({
         hash: item.hash,
         element: this.querySelector(item.hash),
@@ -1035,7 +1067,9 @@ class EmployeePage extends LitElement {
     return {
       about: 'О проекте',
       challenges: 'Челленджи',
+      achievements: 'Достижения',
       teams: 'Команды',
+      review: 'Проверка',
       shop: 'Магазин',
       faq: 'F&Q',
     }[key];
@@ -1303,6 +1337,12 @@ class EmployeePage extends LitElement {
       });
 
       this.passwordSuccess = 'Пароль изменен';
+      this.user = {
+        ...this.user,
+        mustChangePassword: false,
+        temporaryPasswordIssuedAt: null,
+      };
+      this.syncStoredUser(this.user);
       this.newPasswordInput = '';
       this.repeatPasswordInput = '';
       this.passwordEditorOpen = false;
@@ -1983,7 +2023,7 @@ class EmployeePage extends LitElement {
 
         <nav class="employee-nav" aria-label="Разделы кабинета">
           <span class="employee-nav-indicator" aria-hidden="true"></span>
-          ${navItems.map(
+          ${this.getNavItems().map(
             (item) => html`
               <a
                 class=${`employee-nav-link ${this.activeNavHash === item.hash ? 'is-active' : ''}`}
@@ -2120,10 +2160,39 @@ class EmployeePage extends LitElement {
         <p class="challenge-desc">${challenge.description}</p>
         <div class="employee-challenge-card-bottom">
           <span>${isPrivate ? 'Личный' : 'Открытый'}</span>
-          <button type="button">Принять участие</button>
+          <button type="button" @click=${() => this.acceptChallenge(challenge)}>
+            Принять участие
+          </button>
         </div>
       </article>
     `;
+  }
+
+  async acceptChallenge(challenge) {
+    const challengeId = Number(challenge.challengeId || challenge.id);
+
+    if (!Number.isFinite(challengeId) || challengeId <= 0 || this.challengeSubmissionSaving) {
+      return;
+    }
+
+    this.challengeSubmissionSaving = true;
+    this.challengeSubmissionError = '';
+    this.challengeSubmissionSuccess = '';
+
+    try {
+      const data = await this.requestApi(`/api/profile/challenges/${challengeId}/accept`, { method: 'POST' });
+      const entry = data.userChallenge;
+
+      if (entry && !this.userChallenges.some((item) => item.id === entry.id)) {
+        this.userChallenges = [entry, ...this.userChallenges];
+      }
+
+      this.challengeSubmissionSuccess = 'Челлендж добавлен в мои';
+    } catch (error) {
+      this.challengeSubmissionError = error.message || 'Не удалось принять челлендж';
+    } finally {
+      this.challengeSubmissionSaving = false;
+    }
   }
 
   renderMyChallengeCard(challenge) {
@@ -2171,8 +2240,12 @@ class EmployeePage extends LitElement {
   async submitChallengeCompletion() {
     const target = this.challengeSubmissionTarget;
     const userChallengeId = Number(target?.userChallengeId);
+    const challengeId = Number(target?.challengeId || target?.id);
 
-    if (!Number.isFinite(userChallengeId) || userChallengeId <= 0) {
+    if (
+      (!Number.isFinite(userChallengeId) || userChallengeId <= 0) &&
+      (!Number.isFinite(challengeId) || challengeId <= 0)
+    ) {
       this.challengeSubmissionError = 'Не найден челлендж пользователя';
       return;
     }
@@ -2185,7 +2258,8 @@ class EmployeePage extends LitElement {
       const data = await this.requestApi('/api/profile/challenge-submission', {
         method: 'POST',
         body: JSON.stringify({
-          userChallengeId,
+          userChallengeId: Number.isFinite(userChallengeId) && userChallengeId > 0 ? userChallengeId : undefined,
+          challengeId: Number.isFinite(challengeId) && challengeId > 0 ? challengeId : undefined,
           submissionText: this.challengeSubmissionText,
           submissionLinks: this.challengeSubmissionLinks,
         }),
@@ -2198,7 +2272,8 @@ class EmployeePage extends LitElement {
         );
       }
 
-      this.challengeSubmissionSuccess = 'Отправлено на проверку';
+      this.challengeSubmissionSuccess =
+        updatedEntry?.status === 'approved' ? 'Задание автоматически засчитано' : 'Отправлено на проверку';
       window.setTimeout(() => this.closeChallengeSubmission(), 650);
     } catch (error) {
       this.challengeSubmissionError = error.message || 'Не удалось отправить';
@@ -2363,6 +2438,81 @@ class EmployeePage extends LitElement {
     `;
   }
 
+  async fetchReviewQueue() {
+    if (!this.isProjectManager()) {
+      this.reviewQueue = [];
+      return;
+    }
+
+    try {
+      const data = await this.requestApi('/api/profile/review-queue');
+      this.reviewQueue = Array.isArray(data.items) ? data.items : [];
+    } catch (error) {
+      this.reviewError = error.message || 'Не удалось загрузить проверки';
+    }
+  }
+
+  async resolveReviewItem(item, action) {
+    if (this.reviewSaving) {
+      return;
+    }
+
+    this.reviewSaving = true;
+    this.reviewError = '';
+    this.reviewSuccess = '';
+
+    try {
+      await this.requestApi(`/api/profile/review-queue/${item.id}/${action}`, { method: 'POST' });
+      this.reviewQueue = this.reviewQueue.filter((entry) => entry.id !== item.id);
+      this.reviewSuccess = action === 'approve' ? 'Задание засчитано' : 'Задание отклонено';
+      await this.fetchProfile();
+    } catch (error) {
+      this.reviewError = error.message || 'Не удалось обновить проверку';
+    } finally {
+      this.reviewSaving = false;
+    }
+  }
+
+  renderReviewSection() {
+    if (!this.reviewQueue.length) {
+      return this.renderEmptyHint();
+    }
+
+    return html`
+      <div class="employee-review-list">
+        ${this.reviewQueue.map((item) => {
+          const userName = item.user?.username || item.user?.email || 'Участник';
+          const challenge = item.challenge || {};
+
+          return html`
+            <article class="employee-review-card">
+              <div>
+                <span>${item.teamName || 'Команда'} · ${item.submittedAt ? String(item.submittedAt).slice(0, 10) : 'без даты'}</span>
+                <h3>${challenge.title || 'Челлендж'}</h3>
+                <p>${userName}</p>
+              </div>
+              <div>
+                <strong>${Number(item.xpReward || challenge.xpReward || 0)} XP</strong>
+                <p>${item.submissionText || challenge.description || 'Описание не приложено'}</p>
+                ${item.submissionLinks
+                  ? html`<a href=${item.submissionLinks.split(/\s+/)[0]} target="_blank" rel="noreferrer">Ссылки / материалы</a>`
+                  : ''}
+              </div>
+              <div class="employee-review-actions">
+                <button type="button" @click=${() => this.resolveReviewItem(item, 'approve')} ?disabled=${this.reviewSaving}>
+                  Засчитать
+                </button>
+                <button type="button" @click=${() => this.resolveReviewItem(item, 'reject')} ?disabled=${this.reviewSaving}>
+                  Отклонить
+                </button>
+              </div>
+            </article>
+          `;
+        })}
+      </div>
+    `;
+  }
+
   renderParticipantRating() {
     const participants = this.participantRating.slice(0, 10);
     const visibleParticipants = this.expandedRating ? participants : participants.slice(0, 3);
@@ -2402,7 +2552,7 @@ class EmployeePage extends LitElement {
                 this.expandedRating = !this.expandedRating;
               }}
             >
-              ${this.expandedRating ? 'Свернуть' : 'Раскрыть'}
+              ${this.expandedRating ? '↑ Свернуть ↑' : '↓ Раскрыть ↓'}
             </button>
           `
         : ''}
@@ -2714,6 +2864,7 @@ class EmployeePage extends LitElement {
     const challengesCollapsed = this.isSectionCollapsed('challenges');
     const achievementsCollapsed = this.isSectionCollapsed('achievements');
     const teamsCollapsed = this.isSectionCollapsed('teams');
+    const reviewCollapsed = this.isSectionCollapsed('review');
     const shopCollapsed = this.isSectionCollapsed('shop');
     const faqCollapsed = this.isSectionCollapsed('faq');
     const availableChallenges = this.getAvailableChallengeList();
@@ -2723,6 +2874,7 @@ class EmployeePage extends LitElement {
     const activeTeam = this.getActiveTeam(displayTeams);
     const hasTeams = displayTeams.length > 0;
     const hasShop = this.shopCards.length > 0;
+    const isProjectManager = this.isProjectManager();
 
     return html`
       <main class="employee-shell font-sb">
@@ -2884,8 +3036,8 @@ class EmployeePage extends LitElement {
 	              ${this.renderSectionToggle('achievements', 'Достижения')}
 	            </section>
 
-	            ${hasTeams
-	              ? html`
+            ${hasTeams
+              ? html`
 	                  <section class="employee-section" id="teams">
                     <div data-section-content="teams">
                       ${this.renderTeamSectionHeader(displayTeams)}
@@ -2896,6 +3048,20 @@ class EmployeePage extends LitElement {
                           : ''}
                     </div>
                     ${this.renderSectionToggle('teams', 'Команды')}
+                  </section>
+                `
+              : ''}
+
+            ${isProjectManager
+              ? html`
+                  <section class="employee-section" id="review">
+                    <div data-section-content="review">
+                      <h2>Проверка</h2>
+                      ${this.reviewError ? html`<p class="employee-form-error">${this.reviewError}</p>` : ''}
+                      ${this.reviewSuccess ? html`<p class="employee-form-success">${this.reviewSuccess}</p>` : ''}
+                      ${reviewCollapsed ? '' : this.renderReviewSection()}
+                    </div>
+                    ${this.renderSectionToggle('review', 'Проверка')}
                   </section>
                 `
               : ''}

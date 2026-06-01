@@ -1,3 +1,5 @@
+import { recomputeUserAchievements } from '../../../services/gamification';
+
 const USER_UID = 'plugin::users-permissions.user';
 
 const getSingleFile = (files: any, fieldName: string) => {
@@ -92,6 +94,8 @@ const serializeUser = (user: any) => ({
   lvl: calculateLevel(user.xp),
   statusEmoji: user.statusEmoji || '😁',
   statusText: user.statusText || 'Кайфую',
+  mustChangePassword: Boolean(user.mustChangePassword),
+  temporaryPasswordIssuedAt: user.temporaryPasswordIssuedAt || null,
   avatar: serializeMedia(user.avatar),
   role: user.role,
   createdAt: user.createdAt,
@@ -701,6 +705,136 @@ const getPendingDailyCheckinsForManager = async (user: any) => {
   }));
 };
 
+const getManagedTeamUserIds = async (user: any) => {
+  const role = String(user?.globalRole || '').toLowerCase();
+
+  if (role === 'admin') {
+    return null;
+  }
+
+  if (role !== 'project_manager') {
+    return [];
+  }
+
+  const teamLinks = await strapi.db.query('api::team-user.team-user').findMany({
+    where: { user: { id: user.id } },
+    populate: { team: true },
+    limit: 50,
+  });
+  const teamIds = teamLinks.map((link: any) => link.team?.id).filter(Boolean);
+
+  if (!teamIds.length) {
+    return [];
+  }
+
+  const memberLinks = await strapi.db.query('api::team-user.team-user').findMany({
+    where: {
+      team: {
+        id: { $in: teamIds },
+      },
+    },
+    populate: { user: true },
+    limit: 1000,
+  });
+
+  return Array.from(
+    new Set(
+      memberLinks
+        .map((link: any) => link.user?.id)
+        .filter((id: any) => typeof id === 'number'),
+    ),
+  );
+};
+
+const getTeamLabelsForUsers = async (userIds: number[]) => {
+  if (!userIds.length) {
+    return new Map<number, string>();
+  }
+
+  const links = await strapi.db.query('api::team-user.team-user').findMany({
+    where: {
+      user: {
+        id: { $in: userIds },
+      },
+    },
+    populate: {
+      user: true,
+      team: true,
+      teamRole: true,
+    },
+    limit: 1000,
+  });
+  const labels = new Map<number, string>();
+
+  links.forEach((link: any) => {
+    const userId = link.user?.id;
+
+    if (!userId || labels.has(userId)) {
+      return;
+    }
+
+    labels.set(userId, link.team?.name || '');
+  });
+
+  return labels;
+};
+
+const serializeReviewEntry = (entry: any, teamLabels: Map<number, string>) => ({
+  id: entry.id,
+  type: 'challenge',
+  status: entry.status,
+  submittedAt: entry.submittedAt,
+  submissionText: entry.submissionText || '',
+  submissionLinks: entry.submissionLinks || '',
+  xpReward: normalizeXp(entry.challenge?.xpReward),
+  user: entry.user
+    ? {
+        id: entry.user.id,
+        username: entry.user.username,
+        email: entry.user.email,
+        avatar: serializeMedia(entry.user.avatar),
+      }
+    : null,
+  teamName: entry.user?.id ? teamLabels.get(entry.user.id) || '' : '',
+  challenge: entry.challenge ? serializeChallenge(entry.challenge) : null,
+});
+
+const applyChallengeApproval = async (entry: any, approverId: number) => {
+  const reward = normalizeXp(entry.challenge?.xpReward);
+  const nowIso = new Date().toISOString();
+
+  if (reward > 0 && !entry.xpApplied && entry.user?.id) {
+    const userXp = normalizeXp(entry.user.xp);
+    await strapi.db.query(USER_UID).update({
+      where: { id: entry.user.id },
+      data: {
+        xp: userXp + reward,
+        lvl: calculateLevel(userXp + reward),
+      },
+    });
+  }
+
+  const updated = await strapi.db.query('api::user-challenge.user-challenge').update({
+    where: { id: entry.id },
+    data: {
+      status: 'approved',
+      approvedBy: approverId,
+      completedAt: entry.completedAt || nowIso,
+      xpApplied: true,
+    },
+    populate: {
+      user: true,
+      challenge: true,
+    },
+  });
+
+  if (entry.user?.id) {
+    await recomputeUserAchievements(entry.user.id, toMonthKey(formatMoscowDay(new Date())));
+  }
+
+  return updated;
+};
+
 export default {
   async me(ctx: any) {
     const user = await findCurrentUser(ctx);
@@ -838,9 +972,75 @@ export default {
       return ctx.badRequest('Пароль должен быть не короче 6 символов');
     }
 
-    await strapi.plugin('users-permissions').service('user').edit(user.id, { password });
+    await strapi.plugin('users-permissions').service('user').edit(user.id, {
+      password,
+      mustChangePassword: false,
+      temporaryPasswordIssuedAt: null,
+    });
 
     ctx.body = { ok: true };
+  },
+
+  async acceptChallenge(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const challengeId = Number(ctx.params.id || ctx.request.body?.challengeId);
+
+    if (!Number.isFinite(challengeId) || challengeId <= 0) {
+      return ctx.badRequest('Нужно указать челлендж');
+    }
+
+    const challenge = await strapi.db.query('api::challenge.challenge').findOne({
+      where: { id: challengeId },
+      populate: { mentionedUsers: true },
+    });
+
+    if (!challenge) {
+      return ctx.notFound('Челлендж не найден');
+    }
+
+    const isAllowed =
+      challenge.visibility === 'public' ||
+      (challenge.mentionedUsers || []).some((mentionedUser: any) => mentionedUser.id === user.id);
+
+    if (!isAllowed) {
+      return ctx.forbidden('Этот челлендж не назначен пользователю');
+    }
+
+    const existing = await strapi.db.query('api::user-challenge.user-challenge').findOne({
+      where: {
+        user: { id: user.id },
+        challenge: { id: challenge.id },
+      },
+      populate: { challenge: true },
+    });
+
+    const entry =
+      existing ||
+      (await strapi.db.query('api::user-challenge.user-challenge').create({
+        data: {
+          user: user.id,
+          challenge: challenge.id,
+          status: 'pending',
+        },
+        populate: { challenge: true },
+      }));
+
+    ctx.body = {
+      userChallenge: {
+        id: entry.id,
+        status: entry.status,
+        submittedAt: entry.submittedAt,
+        submissionText: entry.submissionText || '',
+        submissionLinks: entry.submissionLinks || '',
+        completedAt: entry.completedAt,
+        challenge: entry.challenge ? serializeChallenge(entry.challenge) : serializeChallenge(challenge),
+      },
+    };
   },
 
   async submitChallenge(ctx: any) {
@@ -851,52 +1051,251 @@ export default {
     }
 
     const userChallengeId = Number(ctx.request.body?.userChallengeId);
+    const challengeId = Number(ctx.request.body?.challengeId);
     const submissionText = String(ctx.request.body?.submissionText || '').trim();
     const submissionLinks = String(ctx.request.body?.submissionLinks || '').trim();
 
-    if (!Number.isFinite(userChallengeId) || userChallengeId <= 0) {
+    if (
+      (!Number.isFinite(userChallengeId) || userChallengeId <= 0) &&
+      (!Number.isFinite(challengeId) || challengeId <= 0)
+    ) {
       return ctx.badRequest('Нужно указать челлендж');
     }
 
-    const entry = await strapi.db.query('api::user-challenge.user-challenge').findOne({
-      where: {
-        id: userChallengeId,
-        user: {
-          id: user.id,
+    let entry = null;
+
+    if (Number.isFinite(userChallengeId) && userChallengeId > 0) {
+      entry = await strapi.db.query('api::user-challenge.user-challenge').findOne({
+        where: {
+          id: userChallengeId,
+          user: {
+            id: user.id,
+          },
         },
-      },
-      populate: {
-        challenge: true,
-      },
-    });
+        populate: {
+          challenge: true,
+        },
+      });
+    }
+
+    if (!entry && Number.isFinite(challengeId) && challengeId > 0) {
+      const challenge = await strapi.db.query('api::challenge.challenge').findOne({
+        where: { id: challengeId },
+        populate: { mentionedUsers: true },
+      });
+
+      if (!challenge) {
+        return ctx.notFound('Челлендж не найден');
+      }
+
+      const isAllowed =
+        challenge.visibility === 'public' ||
+        (challenge.mentionedUsers || []).some((mentionedUser: any) => mentionedUser.id === user.id);
+
+      if (!isAllowed) {
+        return ctx.forbidden('Этот челлендж не назначен пользователю');
+      }
+
+      entry = await strapi.db.query('api::user-challenge.user-challenge').findOne({
+        where: {
+          user: { id: user.id },
+          challenge: { id: challenge.id },
+        },
+        populate: { challenge: true },
+      });
+
+      if (!entry) {
+        entry = await strapi.db.query('api::user-challenge.user-challenge').create({
+          data: {
+            user: user.id,
+            challenge: challenge.id,
+            status: 'pending',
+          },
+          populate: { challenge: true },
+        });
+      }
+    }
 
     if (!entry) {
       return ctx.notFound('Челлендж не найден');
     }
 
+    const shouldAutoApprove = String(user.globalRole || '').toLowerCase() === 'project_manager';
     const updatedEntry = await strapi.db.query('api::user-challenge.user-challenge').update({
       where: { id: entry.id },
       data: {
-        status: 'pending',
+        status: shouldAutoApprove ? 'approved' : 'pending',
         submittedAt: new Date().toISOString(),
         submissionText,
         submissionLinks,
+        ...(shouldAutoApprove
+          ? {
+              approvedBy: user.id,
+              completedAt: new Date().toISOString(),
+            }
+          : {}),
       },
       populate: {
+        user: true,
         challenge: true,
       },
     });
 
+    if (shouldAutoApprove) {
+      await applyChallengeApproval(updatedEntry, user.id);
+    }
+
     ctx.body = {
       userChallenge: {
         id: updatedEntry.id,
-        status: updatedEntry.status,
+        status: shouldAutoApprove ? 'approved' : updatedEntry.status,
         submittedAt: updatedEntry.submittedAt,
         submissionText: updatedEntry.submissionText || '',
         submissionLinks: updatedEntry.submissionLinks || '',
-        completedAt: updatedEntry.completedAt,
+        completedAt: shouldAutoApprove ? new Date().toISOString() : updatedEntry.completedAt,
         challenge: updatedEntry.challenge ? serializeChallenge(updatedEntry.challenge) : null,
       },
     };
+  },
+
+  async reviewQueue(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const role = String(user.globalRole || '').toLowerCase();
+
+    if (role !== 'admin' && role !== 'project_manager') {
+      return ctx.forbidden('Нет прав');
+    }
+
+    const managedUserIds = await getManagedTeamUserIds(user);
+
+    if (Array.isArray(managedUserIds) && !managedUserIds.length) {
+      ctx.body = { items: [] };
+      return;
+    }
+
+    const entries = await strapi.db.query('api::user-challenge.user-challenge').findMany({
+      where: {
+        status: 'pending',
+        ...(Array.isArray(managedUserIds)
+          ? {
+              user: {
+                id: { $in: managedUserIds.filter((id) => id !== user.id) },
+              },
+            }
+          : {}),
+      },
+      populate: {
+        user: {
+          populate: {
+            avatar: true,
+          },
+        },
+        challenge: true,
+      },
+      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+      limit: 100,
+    });
+    const submittedEntries = entries.filter((entry: any) => entry.submittedAt);
+    const userIds = submittedEntries.map((entry: any) => entry.user?.id).filter(Boolean);
+    const teamLabels = await getTeamLabelsForUsers(userIds);
+
+    ctx.body = {
+      items: submittedEntries.map((entry: any) => serializeReviewEntry(entry, teamLabels)),
+    };
+  },
+
+  async approveReview(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const role = String(user.globalRole || '').toLowerCase();
+
+    if (role !== 'admin' && role !== 'project_manager') {
+      return ctx.forbidden('Нет прав');
+    }
+
+    const id = Number(ctx.params.id);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      return ctx.badRequest('Неверная проверка');
+    }
+
+    const entry = await strapi.db.query('api::user-challenge.user-challenge').findOne({
+      where: { id },
+      populate: {
+        user: true,
+        challenge: true,
+      },
+    });
+
+    if (!entry) {
+      return ctx.notFound('Проверка не найдена');
+    }
+
+    if (role === 'project_manager') {
+      const managedUserIds = await getManagedTeamUserIds(user);
+      if (!Array.isArray(managedUserIds) || !managedUserIds.includes(entry.user?.id) || entry.user?.id === user.id) {
+        return ctx.forbidden('Нет прав');
+      }
+    }
+
+    await applyChallengeApproval(entry, user.id);
+
+    ctx.body = { ok: true };
+  },
+
+  async rejectReview(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const role = String(user.globalRole || '').toLowerCase();
+
+    if (role !== 'admin' && role !== 'project_manager') {
+      return ctx.forbidden('Нет прав');
+    }
+
+    const id = Number(ctx.params.id);
+
+    if (!Number.isFinite(id) || id <= 0) {
+      return ctx.badRequest('Неверная проверка');
+    }
+
+    const entry = await strapi.db.query('api::user-challenge.user-challenge').findOne({
+      where: { id },
+      populate: {
+        user: true,
+      },
+    });
+
+    if (!entry) {
+      return ctx.notFound('Проверка не найдена');
+    }
+
+    if (role === 'project_manager') {
+      const managedUserIds = await getManagedTeamUserIds(user);
+      if (!Array.isArray(managedUserIds) || !managedUserIds.includes(entry.user?.id) || entry.user?.id === user.id) {
+        return ctx.forbidden('Нет прав');
+      }
+    }
+
+    await strapi.db.query('api::user-challenge.user-challenge').update({
+      where: { id },
+      data: {
+        status: 'rejected',
+      },
+    });
+
+    ctx.body = { ok: true };
   },
 };

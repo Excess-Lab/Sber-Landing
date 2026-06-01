@@ -40,5 +40,37 @@ export default {
         auth: false,
       },
     },
+    {
+      method: 'POST',
+      path: '/profile/challenges/:id/accept',
+      handler: 'profile.acceptChallenge',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'GET',
+      path: '/profile/review-queue',
+      handler: 'profile.reviewQueue',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'POST',
+      path: '/profile/review-queue/:id/approve',
+      handler: 'profile.approveReview',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'POST',
+      path: '/profile/review-queue/:id/reject',
+      handler: 'profile.rejectReview',
+      config: {
+        auth: false,
+      },
+    },
   ],
 };

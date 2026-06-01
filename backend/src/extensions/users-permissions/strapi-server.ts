@@ -38,5 +38,15 @@ export default (plugin: any) => {
     min: 1,
   };
 
+  userAttributes.mustChangePassword = {
+    type: 'boolean',
+    default: false,
+    required: true,
+  };
+
+  userAttributes.temporaryPasswordIssuedAt = {
+    type: 'datetime',
+  };
+
   return plugin;
 };

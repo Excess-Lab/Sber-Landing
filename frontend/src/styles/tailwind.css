@@ -2548,7 +2548,9 @@
   .admin-dashboard-head button,
   .admin-dashboard-nav button,
   .admin-form button,
-  .admin-table-row button {
+  .admin-table-row button,
+  .admin-inline-form button,
+  .admin-team-card button {
     border: 0;
     border-radius: 999px;
     background: #000000;
@@ -2588,15 +2590,19 @@
 
   .admin-stat-grid,
   .admin-card-grid,
+  .admin-team-grid,
   .admin-list,
   .admin-table,
-  .admin-form {
+  .admin-form,
+  .admin-temp-password,
+  .admin-strapi-card {
     width: min(100%, 1180px);
     margin: 20px auto 0;
   }
 
   .admin-stat-grid,
-  .admin-card-grid {
+  .admin-card-grid,
+  .admin-team-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 14px;
@@ -2605,7 +2611,10 @@
   .admin-stat-grid article,
   .admin-card-grid article,
   .admin-list article,
-  .admin-table-row {
+  .admin-table-row,
+  .admin-team-card,
+  .admin-temp-password,
+  .admin-strapi-card {
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 14px;
     background: #f9f9f9;
@@ -2615,7 +2624,10 @@
   .admin-stat-grid span,
   .admin-list span,
   .admin-table-row span,
-  .admin-card-grid p {
+  .admin-card-grid p,
+  .admin-temp-password span,
+  .admin-strapi-card span,
+  .admin-strapi-card p {
     color: rgba(0, 0, 0, 0.44);
     font-size: 12px;
     line-height: 1.35;
@@ -2675,7 +2687,12 @@
   .admin-form input,
   .admin-form textarea,
   .admin-form select,
-  .admin-table-row select {
+  .admin-table-row input,
+  .admin-table-row select,
+  .admin-inline-form input,
+  .admin-inline-form textarea,
+  .admin-inline-form select,
+  .admin-team-card input {
     min-height: 42px;
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 12px;
@@ -2687,6 +2704,27 @@
     font-size: 13px;
   }
 
+  .admin-color-field {
+    min-height: 42px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    background: #f9f9f9;
+    padding: 4px 12px 4px 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  .admin-color-field input,
+  .admin-team-card input[type='color'] {
+    width: 42px;
+    min-height: 34px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
   .admin-form textarea {
     min-height: 86px;
     padding-block: 12px;
@@ -2694,10 +2732,187 @@
   }
 
   .admin-form button,
-  .admin-table-row button {
+  .admin-table-row button,
+  .admin-inline-form button,
+  .admin-team-card button,
+  .admin-strapi-card a {
     min-height: 42px;
     padding: 0 16px;
     font-size: 13px;
+  }
+
+  .admin-user-row {
+    grid-template-columns: minmax(0, 1fr) 110px 160px 170px 150px;
+  }
+
+  .admin-temp-password strong {
+    display: block;
+    margin-top: 8px;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .admin-team-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .admin-team-card form,
+  .admin-inline-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .admin-inline-form {
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.3fr) 120px 90px 180px 130px 120px;
+  }
+
+  .admin-inline-form textarea {
+    min-height: 42px;
+    padding-block: 10px;
+    resize: vertical;
+  }
+
+  .admin-team-members {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .admin-team-members div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px 90px;
+    gap: 8px;
+    align-items: center;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 10px;
+  }
+
+  .admin-team-members em {
+    color: rgba(0, 0, 0, 0.44);
+    font-style: normal;
+    font-size: 12px;
+  }
+
+  .admin-strapi-card h2 {
+    margin: 8px 0;
+    font-size: 34px;
+    line-height: 1;
+  }
+
+  .admin-strapi-card a {
+    margin-top: 16px;
+    border-radius: 999px;
+    background: #000000;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+  }
+
+  .force-password-shell {
+    min-height: 100vh;
+    background: #ffffff;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .force-password-card {
+    width: min(100%, 520px);
+    border-radius: 28px;
+    background: #f9f9f9;
+    padding: 30px;
+    display: grid;
+    gap: 14px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.07);
+  }
+
+  .force-password-card span,
+  .force-password-card p {
+    color: rgba(0, 0, 0, 0.48);
+  }
+
+  .force-password-card h1 {
+    margin: 0;
+    font-size: 42px;
+    line-height: 1;
+  }
+
+  .force-password-card input {
+    min-height: 54px;
+    border: 0;
+    border-radius: 999px;
+    background: #ffffff;
+    padding: 0 20px;
+    font: inherit;
+  }
+
+  .force-password-card button {
+    min-height: 54px;
+    border: 0;
+    border-radius: 999px;
+    background: #000000;
+    color: #ffffff;
+    font: inherit;
+  }
+
+  .force-password-card p[role='alert'] {
+    color: #d33131;
+  }
+
+  .employee-review-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .employee-review-card {
+    border: var(--employee-surface-border);
+    border-radius: 18px;
+    background: #f9f9f9;
+    padding: 22px;
+    display: grid;
+    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.2fr) auto;
+    gap: 18px;
+    align-items: center;
+  }
+
+  .employee-review-card span,
+  .employee-review-card p {
+    color: rgba(0, 0, 0, 0.44);
+  }
+
+  .employee-review-card h3 {
+    margin: 8px 0;
+    font-size: 24px;
+    line-height: 1.05;
+  }
+
+  .employee-review-card a {
+    color: #b559f3;
+    font-weight: 700;
+  }
+
+  .employee-review-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .employee-review-actions button {
+    min-height: 46px;
+    border: 0;
+    border-radius: 999px;
+    background: #b559f3;
+    color: #ffffff;
+    padding: 0 18px;
+    font: inherit;
+    font-weight: 700;
+  }
+
+  .employee-review-actions button:last-child {
+    background: #000000;
   }
 
   .admin-message {
