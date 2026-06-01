@@ -1,0 +1,42 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log
+
+# Node / build artifacts
+**/node_modules/
+**/dist/
+**/build/
+**/.tmp/
+**/.cache/
+**/coverage/
+**/.eslintcache
+**/*.tsbuildinfo
+
+# Runtime / pid
+*.pid
+*.seed
+
+# Env and secrets (keep examples)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Docker local overrides and volumes
+docker-compose.override.yml
+**/.docker/
+
+# Keep Docker config tracked
+!Dockerfile
+!docker-compose.yml
+!frontend/nginx.conf
