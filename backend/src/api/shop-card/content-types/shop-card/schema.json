@@ -22,12 +22,24 @@
       "required": true,
       "min": 0
     },
+    "stock": {
+      "type": "integer",
+      "default": 0,
+      "min": 0,
+      "required": true
+    },
     "photo": {
       "type": "media",
       "multiple": false,
       "allowedTypes": ["images"]
     },
     "gallery": {
+      "type": "json"
+    },
+    "variants": {
+      "type": "json"
+    },
+    "requiredDifficulties": {
       "type": "json"
     },
     "splineUrl": {

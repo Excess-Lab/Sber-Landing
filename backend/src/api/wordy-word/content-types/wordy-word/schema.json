@@ -1,0 +1,37 @@
+{
+  "kind": "collectionType",
+  "collectionName": "wordy_words",
+  "info": {
+    "singularName": "wordy-word",
+    "pluralName": "wordy-words",
+    "displayName": "Wordy Word",
+    "description": "Technology words and hints for the Wordy mini game"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "word": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "minLength": 2,
+      "maxLength": 32
+    },
+    "hint": {
+      "type": "string",
+      "required": true,
+      "maxLength": 180
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "required": true
+    },
+    "sort": {
+      "type": "integer",
+      "default": 0,
+      "min": 0
+    }
+  }
+}

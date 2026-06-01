@@ -1,0 +1,56 @@
+{
+  "kind": "collectionType",
+  "collectionName": "user_shop_exchanges",
+  "info": {
+    "singularName": "user-shop-exchange",
+    "pluralName": "user-shop-exchanges",
+    "displayName": "User Shop Exchange",
+    "description": "XP shop exchange requests and delivery status"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team"
+    },
+    "shopCard": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::shop-card.shop-card",
+      "required": true
+    },
+    "itemName": {
+      "type": "string",
+      "required": true
+    },
+    "variantKey": {
+      "type": "string"
+    },
+    "variantTitle": {
+      "type": "string"
+    },
+    "price": {
+      "type": "integer",
+      "required": true,
+      "min": 0
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "with_pm", "issued"],
+      "default": "pending",
+      "required": true
+    },
+    "statusUpdatedAt": {
+      "type": "datetime"
+    }
+  }
+}

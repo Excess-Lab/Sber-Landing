@@ -279,33 +279,52 @@ const seedEmployeeDashboard = async (strapi: Core.Strapi) => {
 
   const shopCards = [
     {
-      name: 'Retro Glass',
-      description: 'Стеклянный сет для профиля и витрины достижений.',
+      name: 'Брелок',
+      description: 'Выбери один из двух 3D-брелков и обменяй XP на мерч.',
       price: 150,
       gallery: [`${SBER_PHOTO_BASE}/rectangle-27.png`, `${SBER_PHOTO_BASE}/image-7.png`],
       splineUrl: SPLINE_URLS.retroGlass,
+      variants: [
+        {
+          key: 'type_1',
+          title: 'Тип 1',
+          splineUrl: SPLINE_URLS.retroGlass,
+          gallery: [`${SBER_PHOTO_BASE}/rectangle-27.png`, `${SBER_PHOTO_BASE}/image-7.png`],
+        },
+        {
+          key: 'type_2',
+          title: 'Тип 2',
+          splineUrl: SPLINE_URLS.untitled,
+          gallery: [`${SBER_PHOTO_BASE}/image-8.png`, `${SBER_PHOTO_BASE}/image-9.png`],
+        },
+      ],
+      stock: 12,
       status: 'available',
     },
     {
-      name: 'Giga Boost',
-      description: 'Буст концентрации с 3D-витриной и подборкой фото.',
-      price: 220,
-      gallery: [`${SBER_PHOTO_BASE}/image-8.png`, `${SBER_PHOTO_BASE}/image-9.png`],
-      splineUrl: SPLINE_URLS.untitled,
-      status: 'available',
-    },
-    {
-      name: 'Sber Kit',
-      description: 'Набор для командного челленджа и личного прогресса.',
+      name: 'Стикеры',
+      description: 'Стикерпак для ноутбука, ежедневника и рабочего места.',
       price: 90,
       gallery: [`${SBER_PHOTO_BASE}/image-10.png`, `${SBER_PHOTO_BASE}/rectangle-27.png`],
       splineUrl: '',
-      status: 'not_available',
+      variants: [],
+      stock: 30,
+      status: 'available',
     },
   ];
 
   for (const card of shopCards) {
     await updateOrCreate(strapi, 'api::shop-card.shop-card', { name: card.name }, card);
+  }
+
+  for (const name of ['Retro Glass', 'Giga Boost', 'Sber Kit']) {
+    const legacyCard = await findOne(strapi, 'api::shop-card.shop-card', { name });
+    if (legacyCard) {
+      await strapi.db.query('api::shop-card.shop-card').update({
+        where: { id: legacyCard.id },
+        data: { status: 'not_available', stock: 0 },
+      });
+    }
   }
 
   const milestoneRewards = [
@@ -342,16 +361,16 @@ const seedEmployeeDashboard = async (strapi: Core.Strapi) => {
   const achievements = [
     {
       code: 'daily_first',
-      title: 'Первый дейлик',
-      description: 'Получить 1 подтверждённый дейлик за месяц.',
+      title: 'Первый Wordy',
+      description: 'Пройти Wordy 1 раз за месяц.',
       scope: 'monthly',
       sort: 0,
       rule: { type: 'daily_approved_count', count: 1 },
     },
     {
       code: 'daily_streak_5',
-      title: 'Серия 5',
-      description: 'Сделать серию из 5 подтверждённых дейликов подряд.',
+      title: 'Wordy серия 5',
+      description: 'Пройти Wordy 5 дней подряд.',
       scope: 'monthly',
       sort: 1,
       rule: { type: 'daily_streak', days: 5 },

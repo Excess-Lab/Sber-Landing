@@ -23,6 +23,11 @@
       "target": "api::challenge.challenge",
       "required": true
     },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team"
+    },
     "status": {
       "type": "enumeration",
       "enum": ["pending", "approved", "rejected"],

@@ -94,6 +94,7 @@ const serializeUser = (user: any) => ({
   lvl: calculateLevel(user.xp),
   statusEmoji: user.statusEmoji || '😁',
   statusText: user.statusText || 'Кайфую',
+  primaryTeamId: user.primaryTeam?.id || null,
   mustChangePassword: Boolean(user.mustChangePassword),
   temporaryPasswordIssuedAt: user.temporaryPasswordIssuedAt || null,
   avatar: serializeMedia(user.avatar),
@@ -129,11 +130,204 @@ const serializeShopCard = (card: any) => ({
   name: card.name || 'Товар',
   description: card.description || '',
   price: normalizeXp(card.price),
+  stock: normalizeXp(card.stock),
   status: card.status || 'available',
   photo: serializeMedia(card.photo),
   gallery: Array.isArray(card.gallery) ? card.gallery : [],
+  variants: Array.isArray(card.variants) ? card.variants : [],
   splineUrl: card.splineUrl || '',
+  requiredDifficulties: Array.isArray(card.requiredDifficulties) ? card.requiredDifficulties : [],
+  requirementsLabel: Array.isArray(card.requiredDifficulties) && card.requiredDifficulties.length
+    ? card.requiredDifficulties.join(' + ')
+    : '',
+  eligible: card.eligible ?? true,
+  missingDifficulties: Array.isArray(card.missingDifficulties) ? card.missingDifficulties : [],
 });
+
+const shopExchangeStatusLabels: Record<string, string> = {
+  pending: 'Ожидает',
+  with_pm: 'У PM',
+  issued: 'Выдано',
+};
+
+const fallbackWordyWords = [
+  { id: 0, word: 'сервер', hint: 'Где живёт backend', sort: 1, isActive: true },
+  { id: 0, word: 'токен', hint: 'Ключ авторизации', sort: 2, isActive: true },
+  { id: 0, word: 'релиз', hint: 'Выход новой версии', sort: 3, isActive: true },
+  { id: 0, word: 'макет', hint: 'Первый вид интерфейса', sort: 4, isActive: true },
+];
+
+const WORDLY_MAX_ATTEMPTS = 5;
+const WORDLY_REWARD_XP = 50;
+
+const serializeShopExchange = (exchange: any) => ({
+  id: exchange.id,
+  itemName: exchange.itemName || exchange.shopCard?.name || 'Товар',
+  variantKey: exchange.variantKey || '',
+  variantTitle: exchange.variantTitle || '',
+  price: normalizeXp(exchange.price),
+  status: exchange.status || 'pending',
+  statusLabel: shopExchangeStatusLabels[exchange.status] || 'Ожидает',
+  statusUpdatedAt: exchange.statusUpdatedAt || exchange.updatedAt || '',
+  createdAt: exchange.createdAt || '',
+  teamName: exchange.team?.name || '',
+  user: exchange.user
+    ? {
+        id: exchange.user.id,
+        username: exchange.user.username,
+        email: exchange.user.email,
+      }
+    : null,
+});
+
+const serializeWordyWord = (word: any) => ({
+  id: word.id || 0,
+  documentId: word.documentId || null,
+  word: String(word.word || '').trim().toLowerCase(),
+  hint: String(word.hint || '').trim(),
+  isActive: word.isActive !== false,
+  sort: Number(word.sort || 0),
+});
+
+const getActiveWordyWords = async () => {
+  try {
+    const words = await strapi.db.query('api::wordy-word.wordy-word').findMany({
+      where: { isActive: true },
+      orderBy: [{ sort: 'asc' }, { id: 'asc' }],
+      limit: 200,
+    });
+    const serialized = words.map(serializeWordyWord).filter((item: any) => item.word && item.hint);
+
+    return serialized.length ? serialized : fallbackWordyWords.map(serializeWordyWord);
+  } catch {
+    return fallbackWordyWords.map(serializeWordyWord);
+  }
+};
+
+const getCurrentWordyWord = async () => {
+  const words = await getActiveWordyWords();
+  const dayKey = getWordlyPeriodKey(new Date());
+  const seed = Array.from(dayKey).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+  return words[seed % words.length];
+};
+
+const getMoscowDateParts = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const getPart = (type: string) => parts.find((part) => part.type === type)?.value || '';
+
+  return {
+    year: getPart('year'),
+    month: getPart('month'),
+    day: getPart('day'),
+    hour: Number(getPart('hour')),
+  };
+};
+
+const getWordlyPeriodKey = (date: Date) => {
+  const parts = getMoscowDateParts(date);
+
+  if (parts.hour >= 9) {
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  }
+
+  const previous = new Date(date.getTime() - 86400000);
+  const previousParts = getMoscowDateParts(previous);
+
+  return `${previousParts.year}-${previousParts.month}-${previousParts.day}`;
+};
+
+const getWordlyResetIso = (periodKey: string) =>
+  new Date(`${periodKey}T09:00:00+03:00`).getTime() + 86400000;
+
+const normalizeWordlyGuess = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]/gi, '');
+
+const evaluateWordlyGuess = (guess: string, answer: string) => {
+  const guessLetters = Array.from(guess);
+  const answerLetters = Array.from(answer);
+  const result = guessLetters.map((letter) => ({ letter, state: 'absent' }));
+  const remaining: Record<string, number> = {};
+
+  answerLetters.forEach((letter, index) => {
+    if (guessLetters[index] === letter) {
+      result[index].state = 'correct';
+      return;
+    }
+
+    remaining[letter] = (remaining[letter] || 0) + 1;
+  });
+
+  guessLetters.forEach((letter, index) => {
+    if (result[index].state === 'correct') {
+      return;
+    }
+
+    if (remaining[letter] > 0) {
+      result[index].state = 'present';
+      remaining[letter] -= 1;
+    }
+  });
+
+  return result;
+};
+
+const serializeWordlyPlay = (play: any) => ({
+  id: play?.id || null,
+  status: play?.status || 'in_progress',
+  attempts: Array.isArray(play?.attempts) ? play.attempts : [],
+  completed: play?.status === 'won' || play?.status === 'lost',
+  won: play?.status === 'won',
+});
+
+const getWordlyStats = async (wordId: number | null) => {
+  const where: any = {
+    status: {
+      $in: ['won', 'lost'],
+    },
+  };
+
+  if (wordId) {
+    where.word = { id: wordId };
+  }
+
+  const plays = await strapi.db.query('api::wordly-play.wordly-play').findMany({
+    where,
+    select: ['status', 'attempts'],
+    limit: 10000,
+  });
+  const total = plays.length;
+  const won = plays.filter((play: any) => play.status === 'won').length;
+  const guessRate = total ? Math.round((won / total) * 100) : 0;
+  const averageAttempts = won
+    ? Math.round(
+        (plays
+          .filter((play: any) => play.status === 'won')
+          .reduce((sum: number, play: any) => sum + (Array.isArray(play.attempts) ? play.attempts.length : 0), 0) /
+          won) *
+          10,
+      ) / 10
+    : 0;
+
+  return {
+    total,
+    won,
+    lost: total - won,
+    guessRate,
+    averageAttempts,
+  };
+};
 
 const getGraphemes = (value: string) => {
   const Segmenter = (Intl as any).Segmenter;
@@ -178,6 +372,7 @@ const findCurrentUser = async (ctx: any) => {
     populate: {
       avatar: true,
       role: true,
+      primaryTeam: true,
     },
   });
 
@@ -317,6 +512,61 @@ const getUserTeams = async (userId: number) => {
   }
 };
 
+const getPrimaryTeamForUser = async (user: any) => {
+  const primaryTeamId = Number(user?.primaryTeam?.id);
+
+  if (!Number.isFinite(primaryTeamId) || primaryTeamId <= 0) {
+    return null;
+  }
+
+  const membership = await strapi.db.query('api::team-user.team-user').findOne({
+    where: {
+      user: { id: user.id },
+      team: { id: primaryTeamId },
+    },
+    populate: { team: true },
+  });
+
+  return membership?.team || null;
+};
+
+const requirePrimaryTeamForUser = async (user: any, ctx: any) => {
+  const primaryTeam = await getPrimaryTeamForUser(user);
+
+  if (primaryTeam?.id) {
+    return primaryTeam;
+  }
+
+  ctx.badRequest('Нужен выбор команды перед отправкой');
+  return null;
+};
+
+const getManagedTeamIds = async (user: any) => {
+  const role = String(user?.globalRole || '').toLowerCase();
+
+  if (role === 'admin') {
+    return null;
+  }
+
+  if (role !== 'project_manager') {
+    return [];
+  }
+
+  const teamLinks = await strapi.db.query('api::team-user.team-user').findMany({
+    where: { user: { id: user.id } },
+    populate: { team: true },
+    limit: 50,
+  });
+
+  return Array.from(
+    new Set(
+      teamLinks
+        .map((link: any) => link.team?.id)
+        .filter((id: any) => typeof id === 'number'),
+    ),
+  );
+};
+
 const getUserRoles = async (userId: number) => {
   try {
     const entries = await strapi.db.query('api::team-user.team-user').findMany({
@@ -367,17 +617,70 @@ const getParticipantRating = async () => {
   }
 };
 
-const getShopCards = async () => {
+const getShopCardRequirementStatus = async (userId: number, card: any) => {
+  const required = Array.isArray(card.requiredDifficulties)
+    ? card.requiredDifficulties.map((value: any) => String(value || '').trim()).filter(Boolean)
+    : [];
+
+  if (!required.length) {
+    return { eligible: true, missingDifficulties: [] };
+  }
+
+  const counts = await getChallengeApprovedCountsByDifficulty(userId, 'lifetime');
+  const missingDifficulties = required.filter((difficulty) => normalizeXp(counts[difficulty]) <= 0);
+
+  return {
+    eligible: missingDifficulties.length === 0,
+    missingDifficulties,
+  };
+};
+
+const getShopCards = async (userId?: number) => {
   try {
     const cards = await strapi.db.query('api::shop-card.shop-card').findMany({
+      where: {
+        status: 'available',
+      },
       populate: {
         photo: true,
       },
       orderBy: [{ id: 'asc' }],
-      limit: 3,
+      limit: 20,
     });
 
-    return cards.map(serializeShopCard);
+    if (!userId) {
+      return cards.map(serializeShopCard);
+    }
+
+    return Promise.all(
+      cards.map(async (card: any) =>
+        serializeShopCard({
+          ...card,
+          ...(await getShopCardRequirementStatus(userId, card)),
+        }),
+      ),
+    );
+  } catch {
+    return [];
+  }
+};
+
+const getUserShopExchanges = async (userId: number) => {
+  try {
+    const exchanges = await strapi.db.query('api::user-shop-exchange.user-shop-exchange').findMany({
+      where: {
+        user: { id: userId },
+      },
+      populate: {
+        user: true,
+        team: true,
+        shopCard: true,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      limit: 50,
+    });
+
+    return exchanges.map(serializeShopExchange);
   } catch {
     return [];
   }
@@ -638,23 +941,19 @@ const getPendingDailyCheckinsForManager = async (user: any) => {
   }
 
   let allowedUserIds: number[] | null = null;
+  let managedTeamIds: number[] | null = null;
 
   if (role === 'project_manager') {
-    const teamLinks = await strapi.db.query('api::team-user.team-user').findMany({
-      where: { user: { id: user.id } },
-      populate: { team: true },
-      limit: 24,
-    });
-    const teamIds = teamLinks.map((link: any) => link.team?.id).filter(Boolean);
+    managedTeamIds = await getManagedTeamIds(user);
 
-    if (!teamIds.length) {
+    if (!managedTeamIds.length) {
       return [];
     }
 
     const memberLinks = await strapi.db.query('api::team-user.team-user').findMany({
       where: {
         team: {
-          id: { $in: teamIds },
+          id: { $in: managedTeamIds },
         },
       },
       populate: { user: true },
@@ -685,16 +984,29 @@ const getPendingDailyCheckinsForManager = async (user: any) => {
           }
         : {}),
     },
-    populate: { user: true },
+    populate: { user: true, team: true },
     orderBy: [{ day: 'desc' }, { id: 'desc' }],
     limit: 50,
   });
 
-  return entries.map((entry: any) => ({
+  return entries
+    .filter((entry: any) => {
+      if (!managedTeamIds) {
+        return true;
+      }
+
+      if (entry.team?.id) {
+        return managedTeamIds.includes(entry.team.id);
+      }
+
+      return allowedUserIds?.includes(entry.user?.id);
+    })
+    .map((entry: any) => ({
     id: entry.id,
     day: entry.day,
     status: entry.status,
     points: normalizeXp(entry.points),
+    teamName: entry.team?.name || '',
     user: entry.user
       ? {
           id: entry.user.id,
@@ -716,12 +1028,7 @@ const getManagedTeamUserIds = async (user: any) => {
     return [];
   }
 
-  const teamLinks = await strapi.db.query('api::team-user.team-user').findMany({
-    where: { user: { id: user.id } },
-    populate: { team: true },
-    limit: 50,
-  });
-  const teamIds = teamLinks.map((link: any) => link.team?.id).filter(Boolean);
+  const teamIds = await getManagedTeamIds(user);
 
   if (!teamIds.length) {
     return [];
@@ -746,9 +1053,22 @@ const getManagedTeamUserIds = async (user: any) => {
   );
 };
 
-const getTeamLabelsForUsers = async (userIds: number[]) => {
+const getTeamLabelsForEntries = async (entries: any[]) => {
+  const labels = new Map<number, string>();
+
+  entries.forEach((entry: any) => {
+    if (entry.id && entry.team?.name) {
+      labels.set(entry.id, entry.team.name);
+    }
+  });
+
+  const userIds = entries
+    .filter((entry: any) => entry.id && !labels.has(entry.id))
+    .map((entry: any) => entry.user?.id)
+    .filter(Boolean);
+
   if (!userIds.length) {
-    return new Map<number, string>();
+    return labels;
   }
 
   const links = await strapi.db.query('api::team-user.team-user').findMany({
@@ -764,16 +1084,26 @@ const getTeamLabelsForUsers = async (userIds: number[]) => {
     },
     limit: 1000,
   });
-  const labels = new Map<number, string>();
+  const userTeamLabels = new Map<number, string>();
 
   links.forEach((link: any) => {
     const userId = link.user?.id;
 
-    if (!userId || labels.has(userId)) {
+    if (!userId || userTeamLabels.has(userId)) {
       return;
     }
 
-    labels.set(userId, link.team?.name || '');
+    userTeamLabels.set(userId, link.team?.name || '');
+  });
+
+  entries.forEach((entry: any) => {
+    const userId = entry.user?.id;
+
+    if (!entry.id || labels.has(entry.id) || !userId) {
+      return;
+    }
+
+    labels.set(entry.id, userTeamLabels.get(userId) || '');
   });
 
   return labels;
@@ -795,9 +1125,64 @@ const serializeReviewEntry = (entry: any, teamLabels: Map<number, string>) => ({
         avatar: serializeMedia(entry.user.avatar),
       }
     : null,
-  teamName: entry.user?.id ? teamLabels.get(entry.user.id) || '' : '',
+  teamName: teamLabels.get(entry.id) || '',
   challenge: entry.challenge ? serializeChallenge(entry.challenge) : null,
 });
+
+const canProjectManagerReviewEntry = async (manager: any, entry: any) => {
+  const managedTeamIds = await getManagedTeamIds(manager);
+
+  if (!Array.isArray(managedTeamIds) || !managedTeamIds.length) {
+    return false;
+  }
+
+  if (entry.team?.id) {
+    return managedTeamIds.includes(entry.team.id);
+  }
+
+  const managedUserIds = await getManagedTeamUserIds(manager);
+
+  return (
+    Array.isArray(managedUserIds) &&
+    managedUserIds.includes(entry.user?.id) &&
+    entry.user?.id !== manager.id
+  );
+};
+
+const getShopExchangesForProjectManager = async (user: any) => {
+  const managedTeamIds = await getManagedTeamIds(user);
+
+  if (!Array.isArray(managedTeamIds) || !managedTeamIds.length) {
+    return [];
+  }
+
+  const exchanges = await strapi.db.query('api::user-shop-exchange.user-shop-exchange').findMany({
+    where: {
+      team: {
+        id: { $in: managedTeamIds },
+      },
+    },
+    populate: {
+      user: true,
+      team: true,
+      shopCard: true,
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    limit: 100,
+  });
+
+  return exchanges.map(serializeShopExchange);
+};
+
+const getShopCardVariant = (card: any, variantKey: string) => {
+  const variants = Array.isArray(card?.variants) ? card.variants : [];
+
+  if (!variants.length) {
+    return null;
+  }
+
+  return variants.find((variant: any) => String(variant?.key || '') === variantKey) || null;
+};
 
 const applyChallengeApproval = async (entry: any, approverId: number) => {
   const reward = normalizeXp(entry.challenge?.xpReward);
@@ -836,6 +1221,40 @@ const applyChallengeApproval = async (entry: any, approverId: number) => {
 };
 
 export default {
+  async currentWordy(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const wordy = await getCurrentWordyWord();
+    const period = getWordlyPeriodKey(new Date());
+    const periodKey = `${user.id}:${period}`;
+    const existing = await strapi.db.query('api::wordly-play.wordly-play').findOne({
+      where: { periodKey },
+      populate: { word: true },
+    });
+    const play = serializeWordlyPlay(existing);
+    const completed = play.completed;
+    const stats = completed ? await getWordlyStats(wordy.id || null) : null;
+
+    ctx.body = {
+      wordy: {
+        id: wordy.id,
+        name: 'Wordly',
+        length: Array.from(wordy.word).length,
+        maxAttempts: WORDLY_MAX_ATTEMPTS,
+        rewardXp: WORDLY_REWARD_XP,
+        resetAt: new Date(getWordlyResetIso(period)).toISOString(),
+      },
+      play,
+      completed,
+      alreadyCompleted: completed,
+      stats,
+    };
+  },
+
   async me(ctx: any) {
     const user = await findCurrentUser(ctx);
 
@@ -843,20 +1262,58 @@ export default {
       return;
     }
 
+    if (user.blocked) {
+      ctx.body = {
+        user: serializeUser(user),
+        blockedMessage: 'Профиль заблокирован. Обратитесь к PM',
+        primaryTeamId: user.primaryTeam?.id || null,
+        requiresPrimaryTeam: false,
+        primaryTeamMessage: '',
+        teams: [],
+        roles: [],
+        availableChallenges: [],
+        userChallenges: [],
+        myChallenges: [],
+        participantRating: [],
+        shopCards: [],
+        shopExchanges: [],
+        shopExchangesForPm: [],
+        daily: {
+          today: null,
+          monthStats: null,
+          pendingForPm: [],
+        },
+        achievements: [],
+        milestoneRewards: [],
+      };
+      return;
+    }
+
     const today = formatMoscowDay(new Date());
     const monthKey = toMonthKey(today);
     const dailyToday = await getDailyToday(user.id, today);
     const monthStats = await getDailyMonthStats(user.id, monthKey);
+    const teams = await getUserTeams(user.id);
+    const primaryTeam = await getPrimaryTeamForUser(user);
+    const primaryTeamId = primaryTeam?.id || null;
 
     ctx.body = {
       user: serializeUser(user),
-      teams: await getUserTeams(user.id),
+      primaryTeamId,
+      requiresPrimaryTeam: teams.length > 0 && !primaryTeamId,
+      primaryTeamMessage: teams.length > 0 && !primaryTeamId ? 'Нужен выбор команды' : '',
+      teams,
       roles: await getUserRoles(user.id),
       availableChallenges: await getAvailableChallenges(user.id),
       userChallenges: await getUserChallenges(user.id),
       myChallenges: await getUserChallenges(user.id),
       participantRating: await getParticipantRating(),
-      shopCards: await getShopCards(),
+      shopCards: await getShopCards(user.id),
+      shopExchanges: await getUserShopExchanges(user.id),
+      shopExchangesForPm:
+        String(user.globalRole || '').toLowerCase() === 'project_manager'
+          ? await getShopExchangesForProjectManager(user)
+          : [],
       daily: {
         today: dailyToday,
         monthStats,
@@ -864,6 +1321,266 @@ export default {
       },
       achievements: await getAchievementsForUser(user.id, monthKey),
       milestoneRewards: await getMilestoneRewardsForUser(user.id, monthKey),
+    };
+  },
+
+  async createShopExchange(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const primaryTeam = await requirePrimaryTeamForUser(user, ctx);
+
+    if (!primaryTeam) {
+      return;
+    }
+
+    const shopCardId = Number(ctx.request.body?.shopCardId);
+    const variantKey = String(ctx.request.body?.variantKey || '').trim();
+
+    if (!Number.isFinite(shopCardId) || shopCardId <= 0) {
+      return ctx.badRequest('Нужно выбрать товар');
+    }
+
+    const card = await strapi.db.query('api::shop-card.shop-card').findOne({
+      where: { id: shopCardId },
+      populate: { photo: true },
+    });
+
+    if (!card) {
+      return ctx.notFound('Товар не найден');
+    }
+
+    if (card.status !== 'available') {
+      return ctx.badRequest('Товар недоступен');
+    }
+
+    const requirementStatus = await getShopCardRequirementStatus(user.id, card);
+
+    if (!requirementStatus.eligible) {
+      return ctx.badRequest(`Не выполнены условия: ${requirementStatus.missingDifficulties.join(', ')}`);
+    }
+
+    const variants = Array.isArray(card.variants) ? card.variants : [];
+    const variant = variants.length ? getShopCardVariant(card, variantKey) : null;
+
+    if (variants.length && !variant) {
+      return ctx.badRequest('Нужно выбрать вариант товара');
+    }
+
+    const price = normalizeXp(card.price);
+    const stock = normalizeXp(card.stock);
+    const userXp = normalizeXp(user.xp);
+
+    if (stock <= 0) {
+      return ctx.badRequest('Товар закончился');
+    }
+
+    if (userXp < price) {
+      return ctx.badRequest('Недостаточно XP для обмена');
+    }
+
+    await strapi.db.query(USER_UID).update({
+      where: { id: user.id },
+      data: {
+        xp: userXp - price,
+        lvl: calculateLevel(userXp - price),
+      },
+    });
+
+    await strapi.db.query('api::shop-card.shop-card').update({
+      where: { id: card.id },
+      data: {
+        stock: Math.max(0, stock - 1),
+      },
+    });
+
+    const nowIso = new Date().toISOString();
+    const exchange = await strapi.db.query('api::user-shop-exchange.user-shop-exchange').create({
+      data: {
+        user: user.id,
+        team: primaryTeam.id,
+        shopCard: card.id,
+        itemName: card.name || 'Товар',
+        variantKey: variant?.key || '',
+        variantTitle: variant?.title || '',
+        price,
+        status: 'pending',
+        statusUpdatedAt: nowIso,
+      },
+      populate: {
+        user: true,
+        team: true,
+        shopCard: true,
+      },
+    });
+
+    ctx.body = {
+      exchange: serializeShopExchange(exchange),
+      user: {
+        xp: userXp - price,
+        lvl: calculateLevel(userXp - price),
+      },
+    };
+  },
+
+  async completeWordy(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const answer = normalizeWordlyGuess(ctx.request.body?.answer);
+    const wordy = await getCurrentWordyWord();
+    const normalizedWord = normalizeWordlyGuess(wordy.word);
+    const wordId = wordy.id || null;
+    const period = getWordlyPeriodKey(new Date());
+    const periodKey = `${user.id}:${period}`;
+
+    if (!answer) {
+      return ctx.badRequest('Введи слово');
+    }
+
+    if (Array.from(answer).length !== Array.from(normalizedWord).length) {
+      return ctx.badRequest(`Нужно слово из ${Array.from(normalizedWord).length} букв`);
+    }
+
+    const existing = await strapi.db.query('api::wordly-play.wordly-play').findOne({
+      where: { periodKey },
+      populate: { word: true },
+    });
+    const currentAttempts = Array.isArray(existing?.attempts) ? existing.attempts : [];
+
+    if (existing?.status === 'won' || existing?.status === 'lost') {
+      ctx.body = {
+        ok: true,
+        alreadyCompleted: true,
+        wordy: {
+          name: 'Wordly',
+          length: Array.from(normalizedWord).length,
+          maxAttempts: WORDLY_MAX_ATTEMPTS,
+          rewardXp: WORDLY_REWARD_XP,
+          resetAt: new Date(getWordlyResetIso(period)).toISOString(),
+        },
+        play: serializeWordlyPlay(existing),
+        stats: await getWordlyStats(wordId),
+      };
+      return;
+    }
+
+    if (currentAttempts.length >= WORDLY_MAX_ATTEMPTS) {
+      ctx.body = {
+        ok: true,
+        alreadyCompleted: true,
+        play: serializeWordlyPlay(existing),
+        stats: await getWordlyStats(wordId),
+      };
+      return;
+    }
+
+    const evaluation = evaluateWordlyGuess(answer, normalizedWord);
+    const attempt = {
+      guess: answer,
+      evaluation,
+    };
+    const nextAttempts = [...currentAttempts, attempt];
+    const won = answer === normalizedWord;
+    const lost = !won && nextAttempts.length >= WORDLY_MAX_ATTEMPTS;
+    const status = won ? 'won' : lost ? 'lost' : 'in_progress';
+    const nowIso = new Date().toISOString();
+    const data = {
+      user: user.id,
+      word: wordId,
+      periodKey,
+      status,
+      attempts: nextAttempts,
+      completedAt: status === 'in_progress' ? null : nowIso,
+      xpApplied: won,
+    };
+
+    const play = existing
+      ? await strapi.db.query('api::wordly-play.wordly-play').update({
+          where: { id: existing.id },
+          data,
+        })
+      : await strapi.db.query('api::wordly-play.wordly-play').create({ data });
+    let updatedUser = user;
+
+    if (won) {
+      const currentXp = normalizeXp(user.xp);
+      const nextXp = currentXp + WORDLY_REWARD_XP;
+
+      updatedUser = await strapi.db.query(USER_UID).update({
+        where: { id: user.id },
+        data: {
+          xp: nextXp,
+          lvl: calculateLevel(nextXp),
+        },
+        populate: {
+          avatar: true,
+          role: true,
+          primaryTeam: true,
+        },
+      });
+
+      await recomputeUserAchievements(user.id, toMonthKey(formatMoscowDay(new Date())));
+    }
+
+    const completed = status === 'won' || status === 'lost';
+
+    ctx.body = {
+      ok: true,
+      wordy: {
+        name: 'Wordly',
+        length: Array.from(normalizedWord).length,
+        maxAttempts: WORDLY_MAX_ATTEMPTS,
+        rewardXp: WORDLY_REWARD_XP,
+        resetAt: new Date(getWordlyResetIso(period)).toISOString(),
+      },
+      play: serializeWordlyPlay(play),
+      completed,
+      won,
+      stats: completed ? await getWordlyStats(wordId) : null,
+      user: serializeUser(updatedUser),
+    };
+  },
+
+  async updatePrimaryTeam(ctx: any) {
+    const user = await findCurrentUser(ctx);
+
+    if (!user) {
+      return;
+    }
+
+    const teamId = Number(ctx.request.body?.teamId);
+
+    if (!Number.isFinite(teamId) || teamId <= 0) {
+      return ctx.badRequest('Нужно выбрать команду');
+    }
+
+    const membership = await strapi.db.query('api::team-user.team-user').findOne({
+      where: {
+        user: { id: user.id },
+        team: { id: teamId },
+      },
+      populate: { team: true },
+    });
+
+    if (!membership?.team?.id) {
+      return ctx.forbidden('Пользователь не состоит в этой команде');
+    }
+
+    await strapi.db.query(USER_UID).update({
+      where: { id: user.id },
+      data: { primaryTeam: teamId },
+    });
+
+    ctx.body = {
+      ok: true,
+      primaryTeamId: teamId,
     };
   },
 
@@ -1016,8 +1733,9 @@ export default {
         user: { id: user.id },
         challenge: { id: challenge.id },
       },
-      populate: { challenge: true },
+      populate: { challenge: true, team: true },
     });
+    const primaryTeam = await getPrimaryTeamForUser(user);
 
     const entry =
       existing ||
@@ -1026,8 +1744,9 @@ export default {
           user: user.id,
           challenge: challenge.id,
           status: 'pending',
+          ...(primaryTeam?.id ? { team: primaryTeam.id } : {}),
         },
-        populate: { challenge: true },
+        populate: { challenge: true, team: true },
       }));
 
     ctx.body = {
@@ -1054,6 +1773,11 @@ export default {
     const challengeId = Number(ctx.request.body?.challengeId);
     const submissionText = String(ctx.request.body?.submissionText || '').trim();
     const submissionLinks = String(ctx.request.body?.submissionLinks || '').trim();
+    const primaryTeam = await requirePrimaryTeamForUser(user, ctx);
+
+    if (!primaryTeam) {
+      return;
+    }
 
     if (
       (!Number.isFinite(userChallengeId) || userChallengeId <= 0) &&
@@ -1074,6 +1798,7 @@ export default {
         },
         populate: {
           challenge: true,
+          team: true,
         },
       });
     }
@@ -1101,7 +1826,7 @@ export default {
           user: { id: user.id },
           challenge: { id: challenge.id },
         },
-        populate: { challenge: true },
+        populate: { challenge: true, team: true },
       });
 
       if (!entry) {
@@ -1110,8 +1835,9 @@ export default {
             user: user.id,
             challenge: challenge.id,
             status: 'pending',
+            team: primaryTeam.id,
           },
-          populate: { challenge: true },
+          populate: { challenge: true, team: true },
         });
       }
     }
@@ -1128,6 +1854,7 @@ export default {
         submittedAt: new Date().toISOString(),
         submissionText,
         submissionLinks,
+        team: primaryTeam.id,
         ...(shouldAutoApprove
           ? {
               approvedBy: user.id,
@@ -1138,6 +1865,7 @@ export default {
       populate: {
         user: true,
         challenge: true,
+        team: true,
       },
     });
 
@@ -1178,6 +1906,7 @@ export default {
       return;
     }
 
+    const managedTeamIds = await getManagedTeamIds(user);
     const entries = await strapi.db.query('api::user-challenge.user-challenge').findMany({
       where: {
         status: 'pending',
@@ -1196,13 +1925,27 @@ export default {
           },
         },
         challenge: true,
+        team: true,
       },
       orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
       limit: 100,
     });
-    const submittedEntries = entries.filter((entry: any) => entry.submittedAt);
-    const userIds = submittedEntries.map((entry: any) => entry.user?.id).filter(Boolean);
-    const teamLabels = await getTeamLabelsForUsers(userIds);
+    const submittedEntries = entries.filter((entry: any) => {
+      if (!entry.submittedAt) {
+        return false;
+      }
+
+      if (!Array.isArray(managedTeamIds)) {
+        return true;
+      }
+
+      if (entry.team?.id) {
+        return managedTeamIds.includes(entry.team.id);
+      }
+
+      return managedUserIds.includes(entry.user?.id);
+    });
+    const teamLabels = await getTeamLabelsForEntries(submittedEntries);
 
     ctx.body = {
       items: submittedEntries.map((entry: any) => serializeReviewEntry(entry, teamLabels)),
@@ -1233,6 +1976,7 @@ export default {
       populate: {
         user: true,
         challenge: true,
+        team: true,
       },
     });
 
@@ -1241,8 +1985,7 @@ export default {
     }
 
     if (role === 'project_manager') {
-      const managedUserIds = await getManagedTeamUserIds(user);
-      if (!Array.isArray(managedUserIds) || !managedUserIds.includes(entry.user?.id) || entry.user?.id === user.id) {
+      if (!(await canProjectManagerReviewEntry(user, entry))) {
         return ctx.forbidden('Нет прав');
       }
     }
@@ -1275,6 +2018,7 @@ export default {
       where: { id },
       populate: {
         user: true,
+        team: true,
       },
     });
 
@@ -1283,8 +2027,7 @@ export default {
     }
 
     if (role === 'project_manager') {
-      const managedUserIds = await getManagedTeamUserIds(user);
-      if (!Array.isArray(managedUserIds) || !managedUserIds.includes(entry.user?.id) || entry.user?.id === user.id) {
+      if (!(await canProjectManagerReviewEntry(user, entry))) {
         return ctx.forbidden('Нет прав');
       }
     }

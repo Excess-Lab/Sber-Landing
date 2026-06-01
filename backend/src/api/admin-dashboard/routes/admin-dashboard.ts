@@ -50,6 +50,30 @@ export default {
     },
     {
       method: 'POST',
+      path: '/admin/shop-exchanges/:id/status',
+      handler: 'admin-dashboard.updateShopExchangeStatus',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
+      path: '/admin/shop-cards',
+      handler: 'admin-dashboard.createShopCard',
+      config: { auth: false },
+    },
+    {
+      method: 'PUT',
+      path: '/admin/shop-cards/:id',
+      handler: 'admin-dashboard.updateShopCard',
+      config: { auth: false },
+    },
+    {
+      method: 'DELETE',
+      path: '/admin/shop-cards/:id',
+      handler: 'admin-dashboard.deleteShopCard',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
       path: '/admin/challenges',
       handler: 'admin-dashboard.createChallenge',
       config: { auth: false },
@@ -68,8 +92,38 @@ export default {
     },
     {
       method: 'POST',
+      path: '/admin/wordy-words',
+      handler: 'admin-dashboard.createWordyWord',
+      config: { auth: false },
+    },
+    {
+      method: 'PUT',
+      path: '/admin/wordy-words/:id',
+      handler: 'admin-dashboard.updateWordyWord',
+      config: { auth: false },
+    },
+    {
+      method: 'DELETE',
+      path: '/admin/wordy-words/:id',
+      handler: 'admin-dashboard.deleteWordyWord',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
+      path: '/admin/wordy-words/generate',
+      handler: 'admin-dashboard.generateWordyWord',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
       path: '/admin/achievements',
       handler: 'admin-dashboard.createAchievement',
+      config: { auth: false },
+    },
+    {
+      method: 'DELETE',
+      path: '/admin/achievements/:id',
+      handler: 'admin-dashboard.deleteAchievement',
       config: { auth: false },
     },
     {

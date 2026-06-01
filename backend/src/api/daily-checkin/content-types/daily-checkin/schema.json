@@ -17,6 +17,11 @@
       "target": "plugin::users-permissions.user",
       "required": true
     },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team"
+    },
     "day": {
       "type": "date",
       "required": true
@@ -49,6 +54,12 @@
     "pointsApplied": {
       "type": "boolean",
       "default": false,
+      "required": true
+    },
+    "source": {
+      "type": "enumeration",
+      "enum": ["daily", "wordy"],
+      "default": "daily",
       "required": true
     }
   }

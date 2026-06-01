@@ -30,7 +30,7 @@ const findCurrentUser = async (ctx: any) => {
 
   const user = await strapi.db.query(USER_UID).findOne({
     where: { id: token.id },
-    select: ['id', 'globalRole'],
+    populate: { primaryTeam: true },
   });
 
   if (!user) {
@@ -93,6 +93,66 @@ const getPmTeamUserIds = async (pmUserId: number) => {
   );
 };
 
+const getPmTeamIds = async (pmUserId: number) => {
+  const teamLinks = await strapi.db.query('api::team-user.team-user').findMany({
+    where: { user: { id: pmUserId } },
+    populate: { team: true },
+    limit: 24,
+  });
+
+  return Array.from(
+    new Set(
+      teamLinks
+        .map((link: any) => link.team?.id)
+        .filter((id: any) => typeof id === 'number'),
+    ),
+  );
+};
+
+const getPrimaryTeamForUser = async (user: any) => {
+  const primaryTeamId = Number(user?.primaryTeam?.id);
+
+  if (!Number.isFinite(primaryTeamId) || primaryTeamId <= 0) {
+    return null;
+  }
+
+  const membership = await strapi.db.query('api::team-user.team-user').findOne({
+    where: {
+      user: { id: user.id },
+      team: { id: primaryTeamId },
+    },
+    populate: { team: true },
+  });
+
+  return membership?.team || null;
+};
+
+const requirePrimaryTeamForUser = async (user: any, ctx: any) => {
+  const primaryTeam = await getPrimaryTeamForUser(user);
+
+  if (primaryTeam?.id) {
+    return primaryTeam;
+  }
+
+  ctx.badRequest('Выбери основную команду перед отправкой дейлика');
+  return null;
+};
+
+const canProjectManagerReviewEntry = async (approver: any, entry: any) => {
+  const teamIds = await getPmTeamIds(approver.id);
+
+  if (!teamIds.length) {
+    return false;
+  }
+
+  if (entry.team?.id) {
+    return teamIds.includes(entry.team.id);
+  }
+
+  const allowedUserIds = await getPmTeamUserIds(approver.id);
+  return allowedUserIds.includes(entry.user?.id);
+};
+
 const serializePending = (entry: any) => ({
   id: entry.id,
   day: entry.day,
@@ -105,12 +165,15 @@ const serializePending = (entry: any) => ({
         email: entry.user.email,
       }
     : null,
+  teamName: entry.team?.name || '',
 });
 
 export default {
   async checkin(ctx: any) {
     const user = await findCurrentUser(ctx);
     if (!user) return;
+    const primaryTeam = await requirePrimaryTeamForUser(user, ctx);
+    if (!primaryTeam) return;
 
     const day = formatMoscowDay(new Date());
     const dayKey = `${user.id}:${day}`;
@@ -127,6 +190,7 @@ export default {
     const created = await strapi.db.query('api::daily-checkin.daily-checkin').create({
       data: {
         user: user.id,
+        team: primaryTeam.id,
         day,
         dayKey,
         status: 'pending',
@@ -144,10 +208,12 @@ export default {
 
     const role = String(user.globalRole || '').toLowerCase();
     let allowedUserIds: number[] | null = null;
+    let managedTeamIds: number[] | null = null;
 
     if (role === 'project_manager') {
       allowedUserIds = await getPmTeamUserIds(user.id);
-      if (!allowedUserIds.length) {
+      managedTeamIds = await getPmTeamIds(user.id);
+      if (!allowedUserIds.length || !managedTeamIds.length) {
         ctx.body = { items: [] };
         return;
       }
@@ -166,13 +232,26 @@ export default {
       },
       populate: {
         user: true,
+        team: true,
       },
       orderBy: [{ day: 'desc' }, { id: 'desc' }],
       limit: 50,
     });
 
     ctx.body = {
-      items: entries.map(serializePending),
+      items: entries
+        .filter((entry: any) => {
+          if (!managedTeamIds) {
+            return true;
+          }
+
+          if (entry.team?.id) {
+            return managedTeamIds.includes(entry.team.id);
+          }
+
+          return allowedUserIds?.includes(entry.user?.id);
+        })
+        .map(serializePending),
     };
   },
 
@@ -189,7 +268,7 @@ export default {
 
     const entry = await strapi.db.query('api::daily-checkin.daily-checkin').findOne({
       where: { id },
-      populate: { user: true },
+      populate: { user: true, team: true },
     });
 
     if (!entry) {
@@ -199,8 +278,7 @@ export default {
 
     const role = String(approver.globalRole || '').toLowerCase();
     if (role === 'project_manager') {
-      const allowedUserIds = await getPmTeamUserIds(approver.id);
-      if (!allowedUserIds.includes(entry.user?.id)) {
+      if (!(await canProjectManagerReviewEntry(approver, entry))) {
         ctx.forbidden('Нет прав');
         return;
       }
@@ -239,7 +317,7 @@ export default {
 
     const entry = await strapi.db.query('api::daily-checkin.daily-checkin').findOne({
       where: { id },
-      populate: { user: true },
+      populate: { user: true, team: true },
     });
 
     if (!entry) {
@@ -249,8 +327,7 @@ export default {
 
     const role = String(approver.globalRole || '').toLowerCase();
     if (role === 'project_manager') {
-      const allowedUserIds = await getPmTeamUserIds(approver.id);
-      if (!allowedUserIds.includes(entry.user?.id)) {
+      if (!(await canProjectManagerReviewEntry(approver, entry))) {
         ctx.forbidden('Нет прав');
         return;
       }

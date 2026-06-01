@@ -1,0 +1,48 @@
+{
+  "kind": "collectionType",
+  "collectionName": "wordly_plays",
+  "info": {
+    "singularName": "wordly-play",
+    "pluralName": "wordly-plays",
+    "displayName": "Wordly Play",
+    "description": "Daily Wordly attempts and results"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "word": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::wordy-word.wordy-word"
+    },
+    "periodKey": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["in_progress", "won", "lost"],
+      "default": "in_progress",
+      "required": true
+    },
+    "attempts": {
+      "type": "json"
+    },
+    "completedAt": {
+      "type": "datetime"
+    },
+    "xpApplied": {
+      "type": "boolean",
+      "default": false,
+      "required": true
+    }
+  }
+}

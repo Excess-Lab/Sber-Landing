@@ -92,13 +92,19 @@ class EmployeePage extends LitElement {
     profileMenuOpen: { state: true },
     mobileHeaderHidden: { state: true },
     user: { state: true },
+    blockedMessage: { state: true },
     teams: { state: true },
     roles: { state: true },
     selectedTeamId: { state: true },
+    primaryTeamSaving: { state: true },
+    primaryTeamError: { state: true },
+    primaryTeamMessage: { state: true },
     availableChallenges: { state: true },
     userChallenges: { state: true },
     participantRating: { state: true },
     shopCards: { state: true },
+    shopExchanges: { state: true },
+    shopExchangesForPm: { state: true },
     collapsedSections: { state: true },
     selectedDifficulty: { state: true },
     availableScopeFilter: { state: true },
@@ -110,6 +116,11 @@ class EmployeePage extends LitElement {
     myFiltersOpen: { state: true },
     expandedRating: { state: true },
     shopPhotoIndexes: { state: true },
+    shopVariantSelections: { state: true },
+    shopExchangeTarget: { state: true },
+    shopExchangeSaving: { state: true },
+    shopExchangeError: { state: true },
+    shopExchangeSuccess: { state: true },
     floatingSectionKey: { state: true },
     challengeSubmissionOpen: { state: true },
     challengeSubmissionTarget: { state: true },
@@ -148,7 +159,14 @@ class EmployeePage extends LitElement {
     dailyCheckinSaving: { state: true },
     dailyCheckinError: { state: true },
     dailyCheckinSuccess: { state: true },
+    wordyGuess: { state: true },
+    wordyOpen: { state: true },
+    wordyData: { state: true },
+    wordyLoading: { state: true },
     reviewQueue: { state: true },
+    reviewModalItem: { state: true },
+    reviewHoldAction: { state: true },
+    reviewHoldProgress: { state: true },
     reviewSaving: { state: true },
     reviewError: { state: true },
     reviewSuccess: { state: true },
@@ -164,13 +182,19 @@ class EmployeePage extends LitElement {
       typeof window === 'undefined' ? true : !window.matchMedia('(max-width: 899px)').matches;
     this.mobileHeaderHidden = false;
     this.user = this.readStoredUser() || {};
+    this.blockedMessage = '';
     this.teams = [];
     this.roles = [];
     this.selectedTeamId = '';
+    this.primaryTeamSaving = false;
+    this.primaryTeamError = '';
+    this.primaryTeamMessage = '';
     this.availableChallenges = [];
     this.userChallenges = [];
     this.participantRating = [];
     this.shopCards = [];
+    this.shopExchanges = [];
+    this.shopExchangesForPm = [];
     this.collapsedSections = {
       about: false,
       challenges: false,
@@ -187,10 +211,15 @@ class EmployeePage extends LitElement {
     this.availableSort = 'deadline';
     this.myDeadlineFilter = 'all';
     this.mySort = 'deadline';
-    this.availableFiltersOpen = true;
-    this.myFiltersOpen = true;
+    this.availableFiltersOpen = false;
+    this.myFiltersOpen = false;
     this.expandedRating = false;
     this.shopPhotoIndexes = {};
+    this.shopVariantSelections = {};
+    this.shopExchangeTarget = null;
+    this.shopExchangeSaving = false;
+    this.shopExchangeError = '';
+    this.shopExchangeSuccess = '';
     this.floatingSectionKey = '';
     this.challengeSubmissionOpen = false;
     this.challengeSubmissionTarget = null;
@@ -229,7 +258,14 @@ class EmployeePage extends LitElement {
     this.dailyCheckinSaving = false;
     this.dailyCheckinError = '';
     this.dailyCheckinSuccess = '';
+    this.wordyGuess = '';
+    this.wordyOpen = false;
+    this.wordyData = null;
+    this.wordyLoading = false;
     this.reviewQueue = [];
+    this.reviewModalItem = null;
+    this.reviewHoldAction = '';
+    this.reviewHoldProgress = 0;
     this.reviewSaving = false;
     this.reviewError = '';
     this.reviewSuccess = '';
@@ -244,6 +280,9 @@ class EmployeePage extends LitElement {
     this.lastScrollY = typeof window === 'undefined' ? 0 : window.scrollY;
     this.mobileHeaderLockUntil = 0;
     this.profileAnimation = null;
+    this.reviewHoldTimer = null;
+    this.reviewHoldProgressTimer = null;
+    this.reviewHoldStartedAt = 0;
     this.handleFooterPointerMove = this.handleFooterPointerMove.bind(this);
     this.handleFooterPointerUp = this.handleFooterPointerUp.bind(this);
     this.handleAvatarPointerMove = this.handleAvatarPointerMove.bind(this);
@@ -274,6 +313,7 @@ class EmployeePage extends LitElement {
     window.removeEventListener('pointercancel', this.handleAvatarPointerUp);
     this.stopChallengeCarousel();
     this.revokeAvatarPreview();
+    this.cancelReviewHold();
     super.disconnectedCallback();
   }
 
@@ -572,13 +612,14 @@ class EmployeePage extends LitElement {
       const nextUser = {
         ...this.user,
         ...(data.user || {}),
+        primaryTeamId: data.primaryTeamId || null,
       };
 
       this.user = nextUser;
       this.teams = Array.isArray(data.teams) ? data.teams : [];
-      if (!this.selectedTeamId && this.teams[0]?.id) {
-        this.selectedTeamId = String(this.teams[0].id);
-      }
+      this.selectedTeamId = data.primaryTeamId ? String(data.primaryTeamId) : '';
+      this.primaryTeamMessage = data.primaryTeamMessage || '';
+      this.blockedMessage = data.blockedMessage || '';
       this.roles = Array.isArray(data.roles) ? data.roles : [];
       this.availableChallenges = Array.isArray(data.availableChallenges)
         ? data.availableChallenges
@@ -592,6 +633,8 @@ class EmployeePage extends LitElement {
         ? data.participantRating
         : [];
       this.shopCards = Array.isArray(data.shopCards) ? data.shopCards : this.shopCards;
+      this.shopExchanges = Array.isArray(data.shopExchanges) ? data.shopExchanges : [];
+      this.shopExchangesForPm = Array.isArray(data.shopExchangesForPm) ? data.shopExchangesForPm : [];
       this.daily = data.daily || this.daily;
       this.achievements = Array.isArray(data.achievements) ? data.achievements : this.achievements;
       this.milestoneRewards = Array.isArray(data.milestoneRewards)
@@ -625,9 +668,11 @@ class EmployeePage extends LitElement {
           name: raw.name || 'Товар',
           description: raw.description || '',
           price: Number(raw.price || 0),
+          stock: Number(raw.stock || 0),
           status: raw.status || 'available',
           photo,
           gallery: Array.isArray(raw.gallery) ? raw.gallery : [],
+          variants: Array.isArray(raw.variants) ? raw.variants : [],
           splineUrl: raw.splineUrl || '',
         };
       });
@@ -644,6 +689,11 @@ class EmployeePage extends LitElement {
       return;
     }
 
+    if (!this.hasPrimaryTeam()) {
+      this.dailyCheckinError = this.getPrimaryTeamWarning();
+      return;
+    }
+
     this.dailyCheckinSaving = true;
     this.dailyCheckinError = '';
     this.dailyCheckinSuccess = '';
@@ -656,6 +706,115 @@ class EmployeePage extends LitElement {
       this.dailyCheckinError = error.message || 'Не удалось отметить дейлик';
     } finally {
       this.dailyCheckinSaving = false;
+    }
+  }
+
+  async fetchWordy() {
+    this.wordyLoading = true;
+    this.dailyCheckinError = '';
+
+    try {
+      const data = await this.requestApi('/api/profile/wordly');
+      this.wordyData = data;
+    } catch (error) {
+      this.dailyCheckinError = error.message || 'Не удалось загрузить Wordly';
+    } finally {
+      this.wordyLoading = false;
+    }
+  }
+
+  openWordy() {
+    this.wordyOpen = true;
+    this.wordyGuess = '';
+    this.dailyCheckinError = '';
+    this.dailyCheckinSuccess = '';
+    this.fetchWordy();
+  }
+
+  closeWordy() {
+    if (this.dailyCheckinSaving) {
+      return;
+    }
+
+    this.wordyOpen = false;
+    this.wordyGuess = '';
+  }
+
+  async completeWordy() {
+    if (this.dailyCheckinSaving) {
+      return;
+    }
+
+    if (!this.wordyGuess.trim()) {
+      this.dailyCheckinError = 'Введи слово';
+      return;
+    }
+
+    this.dailyCheckinSaving = true;
+    this.dailyCheckinError = '';
+    this.dailyCheckinSuccess = '';
+
+    try {
+      const data = await this.requestApi('/api/profile/wordly/attempt', {
+        method: 'POST',
+        body: JSON.stringify({ answer: this.wordyGuess }),
+      });
+      if (data.user) {
+        this.user = { ...this.user, ...data.user };
+        this.syncStoredUser(this.user);
+      }
+      this.dailyCheckinSuccess = data.won ? '+50 XP за Wordly' : '';
+      this.wordyGuess = '';
+      this.wordyData = data;
+      if (data.won) {
+        await this.fetchProfile();
+      }
+    } catch (error) {
+      this.dailyCheckinError = error.message || 'Не удалось проверить Wordly';
+    } finally {
+      this.dailyCheckinSaving = false;
+    }
+  }
+
+  hasPrimaryTeam() {
+    return Boolean(this.user?.primaryTeamId || this.selectedTeamId);
+  }
+
+  getPrimaryTeamWarning() {
+    return this.primaryTeamMessage || 'Нужен выбор команды перед отправкой';
+  }
+
+  async updatePrimaryTeam(teamId) {
+    const numericTeamId = Number(teamId);
+
+    this.selectedTeamId = teamId ? String(teamId) : '';
+    this.primaryTeamError = '';
+
+    if (!Number.isFinite(numericTeamId) || numericTeamId <= 0) {
+      this.primaryTeamError = 'Нужно выбрать команду';
+      return;
+    }
+
+    if (this.primaryTeamSaving) {
+      return;
+    }
+
+    this.primaryTeamSaving = true;
+
+    try {
+      const data = await this.requestApi('/api/profile/primary-team', {
+        method: 'PUT',
+        body: JSON.stringify({ teamId: numericTeamId }),
+      });
+      this.user = {
+        ...this.user,
+        primaryTeamId: data.primaryTeamId || numericTeamId,
+      };
+      this.primaryTeamMessage = '';
+    } catch (error) {
+      this.primaryTeamError = error.message || 'Не удалось сохранить выбор команды';
+    } finally {
+      this.primaryTeamSaving = false;
     }
   }
 
@@ -1667,13 +1826,11 @@ class EmployeePage extends LitElement {
   }
 
   renderAvatar() {
-    const avatarUrl = this.getAvatarUrl();
+    const name = this.getDisplayName();
 
     return html`
-      <div class="employee-avatar" aria-hidden=${avatarUrl ? 'false' : 'true'}>
-        ${avatarUrl
-          ? html`<img src=${avatarUrl} alt="Аватар сотрудника" />`
-          : html`<span>excess</span>`}
+      <div class="employee-avatar employee-initial-avatar" aria-hidden="true">
+        <i>${name.slice(0, 1).toUpperCase()}</i>
       </div>
     `;
   }
@@ -1818,30 +1975,177 @@ class EmployeePage extends LitElement {
     `;
   }
 
-  renderDailyProfileBlock() {
-    const today = this.daily?.today || null;
-    const statusLabel = this.getDailyStatusLabel(today?.status);
-    const canCheckin = !today || today.status === 'rejected';
+  getWordlyMeta() {
+    const wordly = this.wordyData?.wordy || {};
 
+    return {
+      length: Number(wordly.length || 5),
+      maxAttempts: Number(wordly.maxAttempts || 5),
+      rewardXp: Number(wordly.rewardXp || 50),
+    };
+  }
+
+  getWordlyAttempts() {
+    return Array.isArray(this.wordyData?.play?.attempts) ? this.wordyData.play.attempts : [];
+  }
+
+  isWordlyCompleted() {
+    const play = this.wordyData?.play;
+
+    return Boolean(play?.completed || this.wordyData?.completed || this.wordyData?.alreadyCompleted);
+  }
+
+  renderWordlyTile(letter = '', state = 'empty') {
+    return html`<span class=${`wordy-tile is-${state}`}>${letter}</span>`;
+  }
+
+  renderWordlyRows() {
+    const { length, maxAttempts } = this.getWordlyMeta();
+    const attempts = this.getWordlyAttempts();
+    const currentLetters = Array.from(this.wordyGuess || '').slice(0, length);
+    const rows = [];
+
+    attempts.forEach((attempt) => {
+      const evaluation = Array.isArray(attempt.evaluation) ? attempt.evaluation : [];
+      rows.push(html`
+        <div class="wordy-row" style=${`--wordly-length: ${length};`}>
+          ${Array.from({ length }, (_, index) =>
+            this.renderWordlyTile(evaluation[index]?.letter || '', evaluation[index]?.state || 'absent'),
+          )}
+        </div>
+      `);
+    });
+
+    if (!this.isWordlyCompleted() && rows.length < maxAttempts) {
+      rows.push(html`
+        <div class="wordy-row is-current" style=${`--wordly-length: ${length};`}>
+          ${Array.from({ length }, (_, index) => this.renderWordlyTile(currentLetters[index] || '', 'pending'))}
+        </div>
+      `);
+    }
+
+    while (rows.length < maxAttempts) {
+      rows.push(html`
+        <div class="wordy-row" style=${`--wordly-length: ${length};`}>
+          ${Array.from({ length }, () => this.renderWordlyTile('', 'empty'))}
+        </div>
+      `);
+    }
+
+    return rows;
+  }
+
+  renderWordlyStats() {
+    if (!this.isWordlyCompleted()) {
+      return '';
+    }
+
+    const stats = this.wordyData?.stats || {};
+    const won = Boolean(this.wordyData?.play?.won || this.wordyData?.won);
+
+    return html`
+      <div class="wordy-result">
+        <strong>${won ? 'Угадал' : 'Не угадал'}</strong>
+        <p>
+          Статистика слова: сыграли ${Number(stats.total || 0)}, угадали ${Number(stats.guessRate || 0)}%.
+          Среднее число попыток: ${Number(stats.averageAttempts || 0)}.
+        </p>
+      </div>
+    `;
+  }
+
+  renderDailyProfileBlock() {
     return html`
       <div class="employee-profile-daily">
         <div>
-          <span>Дейлик</span>
-          <strong>${statusLabel}</strong>
-          <small>Награда: 10 XP</small>
+          <span>Wordly</span>
+          <strong>Мини-игра дня</strong>
+          <small>5 попыток · ресет в 09:00 МСК · Награда: 50 XP</small>
         </div>
-        ${canCheckin
-          ? html`
-              <button type="button" @click=${() => this.checkinDaily()} ?disabled=${this.dailyCheckinSaving}>
-                ${this.dailyCheckinSaving ? '...' : 'Отметить'}
-              </button>
-            `
-          : ''}
+        <button type="button" @click=${() => this.openWordy()} ?disabled=${this.wordyLoading}>
+          ${this.wordyLoading ? 'Загрузка...' : 'Играть'}
+        </button>
       </div>
       ${this.dailyCheckinError
         ? html`<p class="employee-editor-error" role="alert">${this.dailyCheckinError}</p>`
         : ''}
       ${this.dailyCheckinSuccess ? html`<p class="employee-password-success">${this.dailyCheckinSuccess}</p>` : ''}
+    `;
+  }
+
+  renderWordyModal() {
+    if (!this.wordyOpen) {
+      return '';
+    }
+
+    const { length, maxAttempts, rewardXp } = this.getWordlyMeta();
+    const completed = this.isWordlyCompleted();
+    const attempts = this.getWordlyAttempts();
+
+    return html`
+      <div
+        class="employee-modal-backdrop wordy-modal-backdrop"
+        role="presentation"
+        @click=${(event) => {
+          if (event.target === event.currentTarget) {
+            this.closeWordy();
+          }
+        }}
+      >
+        <section class="employee-modal wordy-modal" role="dialog" aria-modal="true" aria-label="Wordly">
+          <button class="employee-modal-close" type="button" @click=${() => this.closeWordy()}>
+            Закрыть
+          </button>
+          <span>Wordly</span>
+          <h3>${completed ? 'Игра завершена' : 'Угадай слово'}</h3>
+          ${this.wordyLoading
+            ? html`<p class="wordy-hint">Загружаю Wordly...</p>`
+            : html`
+                <p class="wordy-hint">
+                  ${length} букв, ${maxAttempts} попыток. Лимит обновляется каждый день в 09:00 МСК.
+                </p>
+                <div class="wordy-board">${this.renderWordlyRows()}</div>
+                <div class="wordy-legend">
+                  <span><i class="is-correct"></i>Правильное место</span>
+                  <span><i class="is-present"></i>Есть в слове</span>
+                  <span><i class="is-absent"></i>Нет в слове</span>
+                </div>
+              `}
+          ${!completed
+            ? html`
+                <label class="wordy-answer-field">
+                  <span>Попытка ${Math.min(attempts.length + 1, maxAttempts)} из ${maxAttempts}</span>
+                  <input
+                    type="text"
+                    maxlength=${length}
+                    autocomplete="off"
+                    .value=${this.wordyGuess}
+                    @input=${(event) => {
+                      this.wordyGuess = event.currentTarget.value.slice(0, length);
+                    }}
+                    @keydown=${(event) => {
+                      if (event.key === 'Enter') {
+                        this.completeWordy();
+                      }
+                    }}
+                  />
+                </label>
+                <button
+                  class="wordy-submit"
+                  type="button"
+                  @click=${() => this.completeWordy()}
+                  ?disabled=${this.dailyCheckinSaving || this.wordyLoading}
+                >
+                  ${this.dailyCheckinSaving ? 'Проверяю...' : `Проверить · ${rewardXp} XP`}
+                </button>
+              `
+            : this.renderWordlyStats()}
+          ${this.dailyCheckinError
+            ? html`<p class="employee-form-error" role="alert">${this.dailyCheckinError}</p>`
+            : ''}
+          ${this.dailyCheckinSuccess ? html`<p class="employee-form-success">${this.dailyCheckinSuccess}</p>` : ''}
+        </section>
+      </div>
     `;
   }
 
@@ -1921,11 +2225,9 @@ class EmployeePage extends LitElement {
         <div class="employee-profile-details">
               <div class="employee-profile-actions">
                 <button type="button" @click=${() => this.openStatusEditor()}>Изменить статус</button>
-                <button type="button" @click=${() => this.openAvatarEditor()}>Изменить аватарку</button>
               </div>
 
               ${this.renderStatusEditor()}
-              ${this.renderAvatarEditor()}
 
               <div class="employee-profile-block">
                 <h3>Мои команды</h3>
@@ -1946,7 +2248,7 @@ class EmployeePage extends LitElement {
 
               <div class="employee-profile-block">
                 <h3>Мои роли</h3>
-                <p class="employee-role-note">Назначаются Проектным менеджером</p>
+                <p class="employee-role-note">Назначаются администратором</p>
                 ${roles.length
                   ? html`
                       <div class="employee-role-tags">
@@ -1969,7 +2271,7 @@ class EmployeePage extends LitElement {
               </div>
 
               <div class="employee-profile-block">
-                <h3>Дейлик</h3>
+                <h3>Wordly</h3>
                 ${this.renderDailyProfileBlock()}
               </div>
 
@@ -2074,6 +2376,7 @@ class EmployeePage extends LitElement {
       <button
         class=${`employee-filter-toggle ${isOpen ? 'is-active' : ''}`}
         type="button"
+        aria-expanded=${isOpen}
         @click=${() => {
           this[property] = !isOpen;
         }}
@@ -2250,6 +2553,11 @@ class EmployeePage extends LitElement {
       return;
     }
 
+    if (!this.hasPrimaryTeam()) {
+      this.challengeSubmissionError = this.getPrimaryTeamWarning();
+      return;
+    }
+
     this.challengeSubmissionSaving = true;
     this.challengeSubmissionError = '';
     this.challengeSubmissionSuccess = '';
@@ -2286,6 +2594,7 @@ class EmployeePage extends LitElement {
     if (!this.challengeSubmissionOpen || !this.challengeSubmissionTarget) {
       return '';
     }
+    const hasPrimaryTeam = this.hasPrimaryTeam();
 
     return html`
       <div
@@ -2323,11 +2632,14 @@ class EmployeePage extends LitElement {
           ${this.challengeSubmissionSuccess
             ? html`<p class="employee-form-success">${this.challengeSubmissionSuccess}</p>`
             : ''}
+          ${!hasPrimaryTeam
+            ? html`<p class="employee-primary-team-note">${this.getPrimaryTeamWarning()}</p>`
+            : ''}
           <div class="employee-modal-actions">
             <button
               type="button"
               @click=${() => this.submitChallengeCompletion()}
-              ?disabled=${this.challengeSubmissionSaving}
+              ?disabled=${this.challengeSubmissionSaving || !hasPrimaryTeam}
             >
               ${this.challengeSubmissionSaving ? 'Отправляю...' : 'Отправить'}
             </button>
@@ -2374,7 +2686,6 @@ class EmployeePage extends LitElement {
       members.find((member) => member.roleName === 'Проектный менеджер') ||
       members.find((member) => member.globalRole === 'project_manager') ||
       members[0];
-    const managerAvatarUrl = this.getMediaUrl(manager?.avatar);
 
     return html`
       <article class="employee-team-card" style=${team.color ? `--team-color: ${team.color};` : ''}>
@@ -2382,13 +2693,12 @@ class EmployeePage extends LitElement {
           <h3>${team.name}</h3>
           <p>Участники</p>
           ${members.map((member, index) => {
-            const avatarUrl = this.getMediaUrl(member.avatar);
             const name = this.getParticipantName(member);
 
             return html`
               <div class="team-member-row">
                 <span style=${`--participant-color: ${this.getParticipantColor(index)};`}>
-                  ${avatarUrl ? html`<img src=${avatarUrl} alt="" />` : name.slice(0, 1).toUpperCase()}
+                  ${name.slice(0, 1).toUpperCase()}
                 </span>
                 <strong>${name}</strong>
                 <em>${member.roleName || 'Участник'}</em>
@@ -2399,15 +2709,9 @@ class EmployeePage extends LitElement {
 
         <div class="team-owner">
           <p>Проектный менеджер</p>
-          ${managerAvatarUrl
-            ? html`<img class="team-owner-avatar" src=${managerAvatarUrl} alt="" loading="lazy" />`
-            : html`
-                <div class="team-owner-visual" aria-hidden="true">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              `}
+          <div class="team-owner-visual employee-initial-avatar" aria-hidden="true">
+            <i>${manager ? this.getParticipantName(manager).slice(0, 1).toUpperCase() : 'К'}</i>
+          </div>
           <p>${manager?.roleName || 'Участник'}</p>
           <strong>${manager ? this.getParticipantName(manager) : 'Команда'}</strong>
         </div>
@@ -2419,22 +2723,30 @@ class EmployeePage extends LitElement {
     return html`
       <div class="employee-title-row employee-team-title-row">
         <h2>Команды</h2>
-        ${displayTeams.length > 1
+        ${displayTeams.length
           ? html`
               <label class="employee-team-switcher">
-                <span>Сменить команду</span>
+                <span>Выбор команды</span>
                 <select
-                  .value=${String(this.getActiveTeam(displayTeams)?.id || '')}
+                  .value=${String(this.selectedTeamId || '')}
                   @change=${(event) => {
-                    this.selectedTeamId = event.currentTarget.value;
+                    this.updatePrimaryTeam(event.currentTarget.value);
                   }}
+                  ?disabled=${this.primaryTeamSaving}
                 >
+                  <option value="">Выбери команду</option>
                   ${displayTeams.map((team) => html`<option value=${team.id}>${team.name}</option>`)}
                 </select>
               </label>
             `
           : ''}
       </div>
+      ${this.primaryTeamError
+        ? html`<p class="employee-editor-error" role="alert">${this.primaryTeamError}</p>`
+        : ''}
+      ${!this.hasPrimaryTeam() && displayTeams.length
+        ? html`<p class="employee-primary-team-note">${this.getPrimaryTeamWarning()}</p>`
+        : ''}
     `;
   }
 
@@ -2473,6 +2785,103 @@ class EmployeePage extends LitElement {
     }
   }
 
+  openReviewItem(item) {
+    this.cancelReviewHold();
+    this.reviewModalItem = item;
+    this.reviewError = '';
+    this.reviewSuccess = '';
+  }
+
+  closeReviewItem() {
+    if (this.reviewSaving) {
+      return;
+    }
+
+    this.cancelReviewHold();
+    this.reviewModalItem = null;
+  }
+
+  getReviewLinks(item) {
+    return String(item?.submissionLinks || '')
+      .split(/\s+/)
+      .map((link) => link.trim())
+      .filter(Boolean);
+  }
+
+  startReviewHold(item, action) {
+    if (this.reviewSaving || !item) {
+      return;
+    }
+
+    if (this.reviewHoldAction === action) {
+      return;
+    }
+
+    this.cancelReviewHold();
+    this.reviewHoldAction = action;
+    this.reviewHoldProgress = 0;
+    this.reviewHoldStartedAt = Date.now();
+    this.reviewHoldProgressTimer = window.setInterval(() => {
+      this.reviewHoldProgress = Math.min(1, (Date.now() - this.reviewHoldStartedAt) / 5000);
+    }, 80);
+    this.reviewHoldTimer = window.setTimeout(async () => {
+      const target = this.reviewModalItem;
+      this.cancelReviewHold();
+      if (!target) {
+        return;
+      }
+      await this.resolveReviewItem(target, action);
+      this.reviewModalItem = null;
+    }, 5000);
+  }
+
+  cancelReviewHold() {
+    if (this.reviewHoldTimer) {
+      window.clearTimeout(this.reviewHoldTimer);
+    }
+
+    if (this.reviewHoldProgressTimer) {
+      window.clearInterval(this.reviewHoldProgressTimer);
+    }
+
+    this.reviewHoldTimer = null;
+    this.reviewHoldProgressTimer = null;
+    this.reviewHoldStartedAt = 0;
+    this.reviewHoldAction = '';
+    this.reviewHoldProgress = 0;
+  }
+
+  renderReviewHoldButton(item, action, label) {
+    const active = this.reviewHoldAction === action;
+    const progress = active ? Math.round(this.reviewHoldProgress * 100) : 0;
+
+    return html`
+      <button
+        class=${`employee-hold-button ${action === 'reject' ? 'is-danger' : ''}`}
+        type="button"
+        style=${active ? `--hold-progress: ${progress}%;` : ''}
+        @pointerdown=${(event) => {
+          event.preventDefault();
+          this.startReviewHold(item, action);
+        }}
+        @pointerup=${() => this.cancelReviewHold()}
+        @pointercancel=${() => this.cancelReviewHold()}
+        @pointerleave=${() => this.cancelReviewHold()}
+        @blur=${() => this.cancelReviewHold()}
+        @keydown=${(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this.startReviewHold(item, action);
+          }
+        }}
+        @keyup=${() => this.cancelReviewHold()}
+        ?disabled=${this.reviewSaving}
+      >
+        ${active ? `${label}: ${progress}%` : `Удерживать 5 сек · ${label}`}
+      </button>
+    `;
+  }
+
   renderReviewSection() {
     if (!this.reviewQueue.length) {
       return this.renderEmptyHint();
@@ -2499,16 +2908,66 @@ class EmployeePage extends LitElement {
                   : ''}
               </div>
               <div class="employee-review-actions">
-                <button type="button" @click=${() => this.resolveReviewItem(item, 'approve')} ?disabled=${this.reviewSaving}>
-                  Засчитать
-                </button>
-                <button type="button" @click=${() => this.resolveReviewItem(item, 'reject')} ?disabled=${this.reviewSaving}>
-                  Отклонить
+                <button type="button" @click=${() => this.openReviewItem(item)} ?disabled=${this.reviewSaving}>
+                  Рассмотреть
                 </button>
               </div>
             </article>
           `;
         })}
+      </div>
+    `;
+  }
+
+  renderReviewModal() {
+    const item = this.reviewModalItem;
+
+    if (!item) {
+      return '';
+    }
+
+    const userName = item.user?.username || item.user?.email || 'Участник';
+    const challenge = item.challenge || {};
+    const links = this.getReviewLinks(item);
+
+    return html`
+      <div
+        class="employee-modal-backdrop"
+        role="presentation"
+        @click=${(event) => {
+          if (event.target === event.currentTarget) {
+            this.closeReviewItem();
+          }
+        }}
+      >
+        <section class="employee-modal employee-review-modal" role="dialog" aria-modal="true">
+          <div>
+            <span>${item.teamName || 'Команда'} · ${item.submittedAt ? String(item.submittedAt).slice(0, 10) : 'без даты'}</span>
+            <h3>${challenge.title || 'Челлендж'}</h3>
+            <p>${userName} · ${Number(item.xpReward || challenge.xpReward || 0)} XP</p>
+          </div>
+          <article>
+            <strong>Что приложил</strong>
+            <p>${item.submissionText || challenge.description || 'Описание не приложено'}</p>
+          </article>
+          ${links.length
+            ? html`
+                <article>
+                  <strong>Материалы</strong>
+                  <div class="employee-review-links">
+                    ${links.map((link) => html`<a href=${link} target="_blank" rel="noreferrer">${link}</a>`)}
+                  </div>
+                </article>
+              `
+            : ''}
+          <div class="employee-modal-actions employee-review-hold-actions">
+            ${this.renderReviewHoldButton(item, 'approve', 'Одобрить')}
+            ${this.renderReviewHoldButton(item, 'reject', 'Отклонить')}
+          </div>
+          <button class="employee-modal-close" type="button" @click=${() => this.closeReviewItem()}>
+            Закрыть
+          </button>
+        </section>
       </div>
     `;
   }
@@ -2524,7 +2983,6 @@ class EmployeePage extends LitElement {
     return html`
       ${visibleParticipants.map((participant, index) => {
         const name = this.getParticipantName(participant);
-        const avatarUrl = this.getMediaUrl(participant.avatar);
         const xp = Number(participant.xp || 0);
 
         return html`
@@ -2534,9 +2992,7 @@ class EmployeePage extends LitElement {
           >
             <span class="top-team-rank">${index + 1}</span>
             <span class="top-team-avatar">
-              ${avatarUrl
-                ? html`<img src=${avatarUrl} alt="" />`
-                : html`<i>${name.slice(0, 1).toUpperCase()}</i>`}
+              <i>${name.slice(0, 1).toUpperCase()}</i>
             </span>
             <strong>${name}</strong>
             <em>${Number.isFinite(xp) ? xp : 0} XP</em>
@@ -2583,6 +3039,7 @@ class EmployeePage extends LitElement {
     const pendingForPm = Array.isArray(this.daily?.pendingForPm) ? this.daily.pendingForPm : [];
     const statusLabel = this.getDailyStatusLabel(today?.status);
     const canCheckin = !today || today.status === 'rejected';
+    const hasPrimaryTeam = this.hasPrimaryTeam();
 
     return html`
       <div class="employee-daily-grid">
@@ -2590,11 +3047,16 @@ class EmployeePage extends LitElement {
           <h3>Сегодня</h3>
           <p class="employee-daily-status">Статус: <strong>${statusLabel}</strong></p>
           <p class="employee-daily-meta">Награда: 10 XP</p>
+          ${!hasPrimaryTeam ? html`<p class="employee-primary-team-note">${this.getPrimaryTeamWarning()}</p>` : ''}
           ${this.dailyCheckinError ? html`<p class="employee-editor-error" role="alert">${this.dailyCheckinError}</p>` : ''}
           ${this.dailyCheckinSuccess ? html`<p class="employee-form-success">${this.dailyCheckinSuccess}</p>` : ''}
           ${canCheckin
             ? html`
-                <button type="button" @click=${() => this.checkinDaily()} ?disabled=${this.dailyCheckinSaving}>
+                <button
+                  type="button"
+                  @click=${() => this.checkinDaily()}
+                  ?disabled=${this.dailyCheckinSaving || !hasPrimaryTeam}
+                >
                   ${this.dailyCheckinSaving ? 'Отмечаю...' : 'Отметить участие'}
                 </button>
               `
@@ -2694,24 +3156,20 @@ class EmployeePage extends LitElement {
     }
 
     return html`
+      ${this.shopExchangeError ? html`<p class="employee-form-error">${this.shopExchangeError}</p>` : ''}
+      ${this.shopExchangeSuccess ? html`<p class="employee-form-success">${this.shopExchangeSuccess}</p>` : ''}
       <div class="employee-shop-grid">
         ${this.shopCards.map((card, cardIndex) => {
-          const gallery = [
-            ...(Array.isArray(card.gallery) ? card.gallery : []),
-            this.getMediaUrl(card.photo),
-          ].filter(Boolean);
-          const normalizedGallery = gallery.length
-            ? gallery
-            : [shopFallbackGallery[cardIndex % shopFallbackGallery.length]];
-          const mediaSlides = [
-            ...(card.splineUrl ? [{ type: 'spline', src: card.splineUrl }] : []),
-            ...normalizedGallery.map((src) => ({ type: 'photo', src })),
-          ];
           const cardKey = card.id || cardIndex;
+          const variants = this.getShopCardVariants(card);
+          const selectedVariant = this.getSelectedShopVariant(card, variants);
+          const mediaSlides = this.getShopMediaSlides(card, cardIndex, selectedVariant);
           const mediaIndex = (this.shopPhotoIndexes[cardKey] || 0) % mediaSlides.length;
           const activeMedia = mediaSlides[mediaIndex];
           const isAvailable = card.status === 'available';
+          const stock = Number(card.stock || 0);
           const price = Number.isFinite(card.price) ? card.price : 0;
+          const canExchange = isAvailable && stock > 0 && this.getUserXp() >= price && card.eligible !== false;
 
           return html`
             <article class="employee-shop-card">
@@ -2747,13 +3205,254 @@ class EmployeePage extends LitElement {
                 </div>
                 <h3>${card.name}</h3>
                 <p>${card.description || 'Описание появится скоро'}</p>
-                <button class="employee-shop-exchange" type="button" ?disabled=${!isAvailable}>
-                  ${isAvailable ? 'Обменять' : 'Недоступно'}
+                ${card.requirementsLabel
+                  ? html`
+                      <p class="employee-shop-stock">
+                        Условие: ${card.requirementsLabel}
+                        ${card.eligible === false ? ` · не выполнено: ${(card.missingDifficulties || []).join(', ')}` : ''}
+                      </p>
+                    `
+                  : ''}
+                ${variants.length
+                  ? html`
+                      <div class="employee-shop-variants">
+                        ${variants.map(
+                          (variant) => html`
+                            <button
+                              class=${selectedVariant?.key === variant.key ? 'is-active' : ''}
+                              type="button"
+                              @click=${() => this.selectShopVariant(cardKey, variant.key)}
+                            >
+                              ${variant.title || variant.key}
+                            </button>
+                          `,
+                        )}
+                      </div>
+                    `
+                  : ''}
+                <p class="employee-shop-stock">Остаток: ${stock}</p>
+                <button
+                  class="employee-shop-exchange"
+                  type="button"
+                  @click=${() => this.openShopExchange(card, selectedVariant)}
+                  ?disabled=${!canExchange}
+                >
+                  ${this.getShopExchangeButtonLabel(card, canExchange, stock, price)}
                 </button>
               </div>
             </article>
           `;
         })}
+      </div>
+      ${this.renderShopExchangeHistory()}
+      ${this.isProjectManager() ? this.renderPmShopExchanges() : ''}
+    `;
+  }
+
+  getShopCardVariants(card) {
+    return Array.isArray(card?.variants) ? card.variants.filter((variant) => variant?.key) : [];
+  }
+
+  getSelectedShopVariant(card, variants = this.getShopCardVariants(card)) {
+    if (!variants.length) {
+      return null;
+    }
+
+    const cardKey = card.id || card.name;
+    const selectedKey = this.shopVariantSelections[cardKey] || variants[0].key;
+
+    return variants.find((variant) => variant.key === selectedKey) || variants[0];
+  }
+
+  selectShopVariant(cardKey, variantKey) {
+    this.shopVariantSelections = {
+      ...this.shopVariantSelections,
+      [cardKey]: variantKey,
+    };
+    this.shopPhotoIndexes = {
+      ...this.shopPhotoIndexes,
+      [cardKey]: 0,
+    };
+  }
+
+  getShopMediaSlides(card, cardIndex, variant) {
+    const variantGallery = Array.isArray(variant?.gallery) ? variant.gallery : [];
+    const cardGallery = Array.isArray(card.gallery) ? card.gallery : [];
+    const gallery = [
+      ...(variantGallery.length ? variantGallery : cardGallery),
+      this.getMediaUrl(card.photo),
+    ].filter(Boolean);
+    const normalizedGallery = gallery.length
+      ? gallery
+      : [shopFallbackGallery[cardIndex % shopFallbackGallery.length]];
+    const splineUrl = variant?.splineUrl || card.splineUrl || '';
+
+    return [
+      ...(splineUrl ? [{ type: 'spline', src: splineUrl }] : []),
+      ...normalizedGallery.map((src) => ({ type: 'photo', src })),
+    ];
+  }
+
+  getShopExchangeButtonLabel(card, canExchange, stock, price) {
+    if (card.status !== 'available') {
+      return 'Недоступно';
+    }
+
+    if (stock <= 0) {
+      return 'Закончился';
+    }
+
+    if (this.getUserXp() < price) {
+      return 'Не хватает XP';
+    }
+
+    if (card.eligible === false) {
+      return 'Не выполнены условия';
+    }
+
+    return canExchange ? 'Обменять' : 'Недоступно';
+  }
+
+  openShopExchange(card, variant) {
+    this.shopExchangeTarget = { card, variant };
+    this.shopExchangeError = '';
+    this.shopExchangeSuccess = '';
+  }
+
+  closeShopExchange() {
+    if (this.shopExchangeSaving) {
+      return;
+    }
+
+    this.shopExchangeTarget = null;
+  }
+
+  async confirmShopExchange() {
+    const card = this.shopExchangeTarget?.card;
+    const variant = this.shopExchangeTarget?.variant;
+
+    if (!card?.id || this.shopExchangeSaving) {
+      return;
+    }
+
+    this.shopExchangeSaving = true;
+    this.shopExchangeError = '';
+    this.shopExchangeSuccess = '';
+
+    try {
+      const data = await this.requestApi('/api/profile/shop-exchanges', {
+        method: 'POST',
+        body: JSON.stringify({
+          shopCardId: card.id,
+          variantKey: variant?.key || '',
+        }),
+      });
+      if (data.user) {
+        this.user = {
+          ...this.user,
+          xp: data.user.xp,
+          lvl: data.user.lvl,
+        };
+      }
+      if (data.exchange) {
+        this.shopExchanges = [data.exchange, ...this.shopExchanges];
+      }
+      this.shopCards = this.shopCards.map((item) =>
+        item.id === card.id ? { ...item, stock: Math.max(0, Number(item.stock || 0) - 1) } : item,
+      );
+      this.shopExchangeSuccess = 'Обмен создан. Статус: Ожидает.';
+      this.shopExchangeTarget = null;
+      await this.fetchProfile();
+    } catch (error) {
+      this.shopExchangeError = error.message || 'Не удалось обменять XP';
+    } finally {
+      this.shopExchangeSaving = false;
+    }
+  }
+
+  renderShopExchangeHistory() {
+    if (!this.shopExchanges.length) {
+      return '';
+    }
+
+    return html`
+      <div class="employee-shop-exchanges">
+        <h3>Мои обмены</h3>
+        ${this.shopExchanges.map(
+          (exchange) => html`
+            <div class="employee-shop-exchange-row">
+              <div>
+                <strong>${exchange.itemName}${exchange.variantTitle ? ` · ${exchange.variantTitle}` : ''}</strong>
+                <p>${exchange.teamName || 'Команда'} · ${Number(exchange.price || 0)} XP</p>
+              </div>
+              <span>${exchange.statusLabel || exchange.status}</span>
+            </div>
+          `,
+        )}
+      </div>
+    `;
+  }
+
+  renderPmShopExchanges() {
+    if (!this.shopExchangesForPm.length) {
+      return '';
+    }
+
+    return html`
+      <div class="employee-shop-exchanges">
+        <h3>Обмены команды</h3>
+        ${this.shopExchangesForPm.map(
+          (exchange) => html`
+            <div class="employee-shop-exchange-row">
+              <div>
+                <strong>${exchange.user?.username || exchange.user?.email || 'Сотрудник'}</strong>
+                <p>
+                  ${exchange.itemName}${exchange.variantTitle ? ` · ${exchange.variantTitle}` : ''}
+                  · ${exchange.teamName || 'Команда'}
+                </p>
+              </div>
+              <span>${exchange.statusLabel || exchange.status}</span>
+            </div>
+          `,
+        )}
+      </div>
+    `;
+  }
+
+  renderShopExchangeModal() {
+    const target = this.shopExchangeTarget;
+
+    if (!target?.card) {
+      return '';
+    }
+
+    const card = target.card;
+    const variant = target.variant;
+    const price = Number(card.price || 0);
+
+    return html`
+      <div
+        class="employee-modal-backdrop"
+        role="presentation"
+        @click=${(event) => {
+          if (event.target === event.currentTarget) {
+            this.closeShopExchange();
+          }
+        }}
+      >
+        <section class="employee-modal employee-shop-exchange-modal" role="dialog" aria-modal="true">
+          <span>Обмен XP</span>
+          <h3>${card.name}${variant?.title ? ` · ${variant.title}` : ''}</h3>
+          <p>Будет списано ${price} XP. Заявка попадёт админу на выдачу.</p>
+          <p>Текущий баланс: ${this.getUserXp()} XP</p>
+          ${this.shopExchangeError ? html`<p class="employee-form-error">${this.shopExchangeError}</p>` : ''}
+          <div class="employee-modal-actions">
+            <button type="button" @click=${() => this.confirmShopExchange()} ?disabled=${this.shopExchangeSaving}>
+              ${this.shopExchangeSaving ? 'Обмениваю...' : 'Подтвердить'}
+            </button>
+            <button type="button" @click=${() => this.closeShopExchange()}>Отмена</button>
+          </div>
+        </section>
       </div>
     `;
   }
@@ -2859,7 +3558,24 @@ class EmployeePage extends LitElement {
     `;
   }
 
+  renderBlockedProfile() {
+    return html`
+      <main class="employee-shell font-sb">
+        <section class="employee-blocked-card">
+          <span>Доступ ограничен</span>
+          <h1>${this.blockedMessage || 'Профиль заблокирован. Обратитесь к PM'}</h1>
+          <p>Рабочие разделы, челленджи, Wordly и магазин временно недоступны.</p>
+          <button type="button" @click=${() => this.logout()}>Выйти</button>
+        </section>
+      </main>
+    `;
+  }
+
   render() {
+    if (this.user?.blocked) {
+      return this.renderBlockedProfile();
+    }
+
     const aboutCollapsed = this.isSectionCollapsed('about');
     const challengesCollapsed = this.isSectionCollapsed('challenges');
     const achievementsCollapsed = this.isSectionCollapsed('achievements');
@@ -2985,8 +3701,8 @@ class EmployeePage extends LitElement {
 	              ? html`
 	                  <section class="employee-section" id="challenges">
                     <div data-section-content="challenges">
-                      <div class="employee-title-row">
-                        <h2>Доступные челленджи</h2>
+                      <h2>Доступные челленджи</h2>
+                      <div class="employee-filter-row">
                         ${this.renderFilterToggle('available')}
                       </div>
                       ${challengesCollapsed
@@ -3008,8 +3724,8 @@ class EmployeePage extends LitElement {
                             ${myChallengeList.length
                               ? html`
                                   <div class="employee-subsection">
-                                    <div class="employee-title-row">
-                                      <h2>Мои челленджи</h2>
+                                    <h2>Мои челленджи</h2>
+                                    <div class="employee-filter-row">
                                       ${this.renderFilterToggle('my')}
                                     </div>
                                     ${this.renderChallengeFilters('my')}
@@ -3111,6 +3827,9 @@ class EmployeePage extends LitElement {
             </footer>
             ${this.renderFloatingSectionToggle()}
             ${this.renderChallengeSubmissionModal()}
+            ${this.renderReviewModal()}
+            ${this.renderShopExchangeModal()}
+            ${this.renderWordyModal()}
           </section>
         </div>
       </main>

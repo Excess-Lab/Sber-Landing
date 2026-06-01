@@ -54,10 +54,20 @@ class LoginPage extends LitElement {
     try {
       await this.submitCredentials(formData);
     } catch (error) {
-      this.errorMessage = error.message || 'Что-то пошло не так';
+      this.errorMessage = this.normalizeLoginError(error);
     } finally {
       this.loading = false;
     }
+  }
+
+  normalizeLoginError(error) {
+    const message = error?.message || 'Что-то пошло не так';
+
+    if (/blocked|заблок/i.test(message)) {
+      return 'Профиль заблокирован. Обратитесь к PM';
+    }
+
+    return message;
   }
 
   async requestJson(path, options) {
@@ -78,7 +88,6 @@ class LoginPage extends LitElement {
   }
 
   async submitCredentials(formData) {
-    const isAdmin = this.isAdminPage();
     const identifier = String(formData.get('identifier') || formData.get('email') || '')
       .trim()
       .toLowerCase();
@@ -95,14 +104,6 @@ class LoginPage extends LitElement {
 
     if (!data.jwt) {
       throw new Error('Сервер не вернул токен входа');
-    }
-
-    if (isAdmin && data.user?.globalRole !== 'admin') {
-      window.localStorage.removeItem('auth.jwt');
-      window.localStorage.removeItem('auth.user');
-      window.sessionStorage.removeItem('auth.jwt');
-      window.sessionStorage.removeItem('auth.user');
-      throw new Error('Нет доступа к админ-входу');
     }
 
     let authUser = data.user || {};
@@ -145,7 +146,7 @@ class LoginPage extends LitElement {
       }),
     );
 
-    window.location.assign(isAdmin ? '/admin' : '/employee');
+    window.location.assign(authUser?.globalRole === 'admin' ? '/admin' : '/employee');
   }
 
   openAccessRequestEmail() {

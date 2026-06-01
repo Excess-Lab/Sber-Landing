@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    ports:
+      - "1337:1337"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 1337
+      DATABASE_CLIENT: sqlite
+      DATABASE_FILENAME: .tmp/data.db
+      JWT_EXPIRES_IN: 7d
+      # Optional Langflow generation (safe to leave empty)
+      LANGFLOW_API_KEY: ${LANGFLOW_API_KEY-}
+      LANGFLOW_CHALLENGE_ENDPOINT: ${LANGFLOW_CHALLENGE_ENDPOINT-}
+      LANGFLOW_ACHIEVEMENT_ENDPOINT: ${LANGFLOW_ACHIEVEMENT_ENDPOINT-}
+      LANGFLOW_WORDY_ENDPOINT: ${LANGFLOW_WORDY_ENDPOINT-}
+      # REQUIRED secrets for Strapi. Put real values in your shell or an .env file next to this compose.
+      APP_KEYS: ${APP_KEYS}
+      API_TOKEN_SALT: ${API_TOKEN_SALT}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
+      TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    volumes:
+      - backend_data:/app/.tmp
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        VITE_API_URL: http://localhost:1337
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend_data: {}

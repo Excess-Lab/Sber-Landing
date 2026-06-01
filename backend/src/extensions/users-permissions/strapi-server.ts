@@ -14,6 +14,12 @@ export default (plugin: any) => {
     allowedTypes: ['images'],
   };
 
+  userAttributes.primaryTeam = {
+    type: 'relation',
+    relation: 'manyToOne',
+    target: 'api::team.team',
+  };
+
   userAttributes.statusEmoji = {
     type: 'string',
     default: '😁',

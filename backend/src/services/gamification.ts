@@ -143,6 +143,28 @@ const getChallengeApprovedCountsByDifficulty = async (userId: number, periodKey:
     counts[difficulty] = (counts[difficulty] || 0) + 1;
   });
 
+  const wordlyWhere: any = {
+    user: { id: userId },
+    status: 'won',
+  };
+
+  if (range) {
+    wordlyWhere.completedAt = {
+      $gte: range.startIso,
+      $lt: range.endIso,
+    };
+  }
+
+  const wordlyEntries = await strapi.db.query('api::wordly-play.wordly-play').findMany({
+    where: wordlyWhere,
+    select: ['id'],
+    limit: 1000,
+  });
+
+  if (wordlyEntries.length) {
+    counts.Light = (counts.Light || 0) + wordlyEntries.length;
+  }
+
   return counts;
 };
 

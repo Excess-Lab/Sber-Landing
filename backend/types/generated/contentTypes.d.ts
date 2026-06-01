@@ -612,9 +612,13 @@ export interface ApiDailyCheckinDailyCheckin
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<false>;
     publishedAt: Schema.Attribute.DateTime;
+    source: Schema.Attribute.Enumeration<['daily', 'wordy']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'daily'>;
     status: Schema.Attribute.Enumeration<['pending', 'approved', 'rejected']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'pending'>;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -699,13 +703,24 @@ export interface ApiShopCardShopCard extends Struct.CollectionTypeSchema {
         number
       >;
     publishedAt: Schema.Attribute.DateTime;
+    requiredDifficulties: Schema.Attribute.JSON;
     splineUrl: Schema.Attribute.String;
     status: Schema.Attribute.Enumeration<['available', 'not_available']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'available'>;
+    stock: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    variants: Schema.Attribute.JSON;
   };
 }
 
@@ -888,6 +903,7 @@ export interface ApiUserChallengeUserChallenge
     submissionLinks: Schema.Attribute.Text;
     submissionText: Schema.Attribute.Text;
     submittedAt: Schema.Attribute.DateTime;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -899,6 +915,157 @@ export interface ApiUserChallengeUserChallenge
     xpApplied: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<false>;
+  };
+}
+
+export interface ApiUserShopExchangeUserShopExchange
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'user_shop_exchanges';
+  info: {
+    description: 'XP shop exchange requests and delivery status';
+    displayName: 'User Shop Exchange';
+    pluralName: 'user-shop-exchanges';
+    singularName: 'user-shop-exchange';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    itemName: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::user-shop-exchange.user-shop-exchange'
+    > &
+      Schema.Attribute.Private;
+    price: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    publishedAt: Schema.Attribute.DateTime;
+    shopCard: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::shop-card.shop-card'
+    > &
+      Schema.Attribute.Required;
+    status: Schema.Attribute.Enumeration<['pending', 'with_pm', 'issued']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pending'>;
+    statusUpdatedAt: Schema.Attribute.DateTime;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    > &
+      Schema.Attribute.Required;
+    variantKey: Schema.Attribute.String;
+    variantTitle: Schema.Attribute.String;
+  };
+}
+
+export interface ApiWordlyPlayWordlyPlay extends Struct.CollectionTypeSchema {
+  collectionName: 'wordly_plays';
+  info: {
+    description: 'Daily Wordly attempts and results';
+    displayName: 'Wordly Play';
+    pluralName: 'wordly-plays';
+    singularName: 'wordly-play';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    attempts: Schema.Attribute.JSON;
+    completedAt: Schema.Attribute.DateTime;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::wordly-play.wordly-play'
+    > &
+      Schema.Attribute.Private;
+    periodKey: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    publishedAt: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<['in_progress', 'won', 'lost']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'in_progress'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    > &
+      Schema.Attribute.Required;
+    word: Schema.Attribute.Relation<'manyToOne', 'api::wordy-word.wordy-word'>;
+    xpApplied: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<false>;
+  };
+}
+
+export interface ApiWordyWordWordyWord extends Struct.CollectionTypeSchema {
+  collectionName: 'wordy_words';
+  info: {
+    description: 'Technology words and hints for the Wordy mini game';
+    displayName: 'Wordy Word';
+    pluralName: 'wordy-words';
+    singularName: 'wordy-word';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    hint: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 180;
+      }>;
+    isActive: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<true>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::wordy-word.wordy-word'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    sort: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    word: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 32;
+        minLength: 2;
+      }>;
   };
 }
 
@@ -1392,11 +1559,15 @@ export interface PluginUsersPermissionsUser
         number
       > &
       Schema.Attribute.DefaultTo<1>;
+    mustChangePassword: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<false>;
     password: Schema.Attribute.Password &
       Schema.Attribute.Private &
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    primaryTeam: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     resetPasswordToken: Schema.Attribute.String & Schema.Attribute.Private;
@@ -1414,6 +1585,7 @@ export interface PluginUsersPermissionsUser
         maxLength: 48;
       }> &
       Schema.Attribute.DefaultTo<'\u041A\u0430\u0439\u0444\u0443\u044E'>;
+    temporaryPasswordIssuedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1456,6 +1628,9 @@ declare module '@strapi/strapi' {
       'api::team.team': ApiTeamTeam;
       'api::user-achievement.user-achievement': ApiUserAchievementUserAchievement;
       'api::user-challenge.user-challenge': ApiUserChallengeUserChallenge;
+      'api::user-shop-exchange.user-shop-exchange': ApiUserShopExchangeUserShopExchange;
+      'api::wordly-play.wordly-play': ApiWordlyPlayWordlyPlay;
+      'api::wordy-word.wordy-word': ApiWordyWordWordyWord;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;
