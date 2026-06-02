@@ -4,6 +4,9 @@
 # Keep gitignore itself tracked
 !.gitignore
 
+# Keep project documentation tracked
+!README.md
+
 # Keep Docker-related files tracked
 !docker-compose.yml
 !docker-compose.*.yml
